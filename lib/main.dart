@@ -1,122 +1,256 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const GestorArchivosApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class GestorArchivosApp extends StatelessWidget {
+  const GestorArchivosApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Gestor Avanzado',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey),
+        useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const GestorPrincipal(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class GestorPrincipal extends StatefulWidget {
+  const GestorPrincipal({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<GestorPrincipal> createState() => _GestorPrincipalState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _GestorPrincipalState extends State<GestorPrincipal> {
+  // En desarrollo, puedes usar Directory.current.path o una ruta específica
+  //String directorioBase = Directory.current.path;
+  String directorioBase = r"D:\Videos";
+  List<CarpetaModelo> datosCarpetas = [];
+  List<CarpetaModelo> carpetasFiltradas = [];
+  TextEditingController searchController = TextEditingController();
+  bool expandirTodo = true;
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+  @override
+  void initState() {
+    super.initState();
+    _escanearDirectorio();
+    searchController.addListener(_filtrarResultados);
+  }
+
+  void _escanearDirectorio() {
+    final dir = Directory(directorioBase);
+    if (!dir.existsSync()) return;
+
+    List<CarpetaModelo> carpetasTemp = [];
+
+    // Escaneo superficial de directorios para agrupar (similar al os.walk)
+    List<FileSystemEntity> entidades = dir.listSync(recursive: true);
+
+    // Agrupar archivos por su directorio padre
+    Map<String, List<File>> agrupacion = {};
+
+    for (var entidad in entidades) {
+      if (entidad is File) {
+        String parentPath = entidad.parent.path;
+        if (!agrupacion.containsKey(parentPath)) {
+          agrupacion[parentPath] = [];
+        }
+        agrupacion[parentPath]!.add(entidad);
+      }
+    }
+
+    agrupacion.forEach((ruta, archivos) {
+      int tamanoTotal = archivos.fold(
+        0,
+        (sum, file) => sum + file.lengthSync(),
+      );
+      carpetasTemp.add(
+        CarpetaModelo(
+          rutaCompleta: ruta,
+          nombre: ruta == directorioBase
+              ? "RAIZ"
+              : ruta.split(Platform.pathSeparator).last,
+          tamanoBytes: tamanoTotal,
+          archivos: archivos,
+        ),
+      );
     });
+
+    setState(() {
+      datosCarpetas = carpetasTemp;
+      carpetasFiltradas = List.from(datosCarpetas);
+    });
+  }
+
+  void _filtrarResultados() {
+    String query = searchController.text.toLowerCase();
+    if (query.isEmpty) {
+      setState(() => carpetasFiltradas = List.from(datosCarpetas));
+      return;
+    }
+
+    List<CarpetaModelo> filtrado = [];
+    for (var carpeta in datosCarpetas) {
+      bool coincideCarpeta = carpeta.nombre.toLowerCase().contains(query);
+      List<File> archivosCoincidentes = carpeta.archivos
+          .where(
+            (f) => f.path
+                .split(Platform.pathSeparator)
+                .last
+                .toLowerCase()
+                .contains(query),
+          )
+          .toList();
+
+      if (coincideCarpeta) {
+        filtrado.add(carpeta);
+      } else if (archivosCoincidentes.isNotEmpty) {
+        filtrado.add(
+          CarpetaModelo(
+            rutaCompleta: carpeta.rutaCompleta,
+            nombre: carpeta.nombre,
+            tamanoBytes: carpeta.tamanoBytes,
+            archivos: archivosCoincidentes,
+          ),
+        );
+      }
+    }
+
+    setState(() {
+      carpetasFiltradas = filtrado;
+      expandirTodo = true; // Auto-expandir al buscar
+    });
+  }
+
+  String _formatearTamano(int bytes) {
+    if (bytes < 1024) return "$bytes B";
+    if (bytes < 1048576) return "${(bytes / 1024).toStringAsFixed(2)} KB";
+    return "${(bytes / 1048576).toStringAsFixed(2)} MB";
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
+        title: const Text('Gestor Avanzado de Archivos'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+      body: Column(
+        children: [
+          // Barra de búsqueda superior
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: searchController,
+              decoration: const InputDecoration(
+                labelText: '🔍 Buscar archivos o carpetas',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
             ),
-          ],
-        ),
+          ),
+
+          // Controles de vista
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Row(
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      carpetasFiltradas.sort(
+                        (a, b) => a.nombre.compareTo(b.nombre),
+                      );
+                    });
+                  },
+                  icon: const Icon(Icons.sort_by_alpha),
+                  label: const Text('Ordenar A-Z'),
+                ),
+                const SizedBox(width: 10),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      expandirTodo = !expandirTodo;
+                    });
+                  },
+                  icon: Icon(
+                    expandirTodo ? Icons.unfold_less : Icons.unfold_more,
+                  ),
+                  label: Text(expandirTodo ? 'Contraer Todo' : 'Expandir Todo'),
+                ),
+              ],
+            ),
+          ),
+
+          const Divider(),
+
+          // Lista de resultados
+          Expanded(
+            child: ListView.builder(
+              itemCount: carpetasFiltradas.length,
+              itemBuilder: (context, index) {
+                final carpeta = carpetasFiltradas[index];
+                return Theme(
+                  data: Theme.of(
+                    context,
+                  ).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    initiallyExpanded: expandirTodo,
+                    leading: const Icon(Icons.folder, color: Colors.amber),
+                    title: Text(
+                      carpeta.nombre,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(_formatearTamano(carpeta.tamanoBytes)),
+                    children: carpeta.archivos.map((archivo) {
+                      String nombreArchivo = archivo.path
+                          .split(Platform.pathSeparator)
+                          .last;
+                      int tamanoArchivo = archivo.lengthSync();
+                      return ListTile(
+                        contentPadding: const EdgeInsets.only(
+                          left: 40,
+                          right: 16,
+                        ),
+                        leading: const Icon(
+                          Icons.insert_drive_file,
+                          color: Colors.blueGrey,
+                        ),
+                        title: Text(nombreArchivo),
+                        trailing: Text(_formatearTamano(tamanoArchivo)),
+                        onTap: () {
+                          // Aquí puedes integrar lógica para abrir el archivo
+                        },
+                      );
+                    }).toList(),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
+}
+
+class CarpetaModelo {
+  final String rutaCompleta;
+  final String nombre;
+  final int tamanoBytes;
+  final List<File> archivos;
+
+  CarpetaModelo({
+    required this.rutaCompleta,
+    required this.nombre,
+    required this.tamanoBytes,
+    required this.archivos,
+  });
 }
