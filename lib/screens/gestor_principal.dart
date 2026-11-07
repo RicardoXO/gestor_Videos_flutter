@@ -1,6 +1,7 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+//import 'package:intl/intl.dart';
 
 import '../models/carpeta_modelo.dart';
 import '../models/archivo_modelo.dart';
@@ -79,6 +80,15 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
 
     agrupacion.forEach((ruta, archivos) {
       int tamanoTotal = archivos.fold(0, (sum, a) => sum + a.tamanoBytes);
+
+      // Busca el primer archivo ICO para usarlo como icono de la carpeta
+      String? icono;
+      try {
+        icono = archivos.firstWhere((a) => a.tipo == 'ico').rutaCompleta;
+      } catch (e) {
+        icono = null;
+      }
+
       carpetasTemp.add(
         CarpetaModelo(
           rutaCompleta: ruta,
@@ -87,17 +97,15 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
               : ruta.split(Platform.pathSeparator).last,
           tamanoBytes: tamanoTotal,
           archivos: archivos,
+          iconoPath: icono,
         ),
       );
     });
 
-    // CORRECCIÓN: Respetar la vista actual al recargar después de un renombrado
     datosCarpetas = carpetasTemp;
     todosLosArchivos = archivosTemp;
     _actualizarVista();
   }
-
-  // --- LÓGICA DE JERARQUÍA VISUAL ---
 
   int _calcularProfundidad(String ruta) {
     if (ruta.length <= directorioBase.length) return 0;
@@ -107,8 +115,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     }
     return relativa.isEmpty ? 0 : relativa.split(Platform.pathSeparator).length;
   }
-
-  // --- LÓGICA DE RESTRICCIÓN DE SELECCIÓN ---
 
   void _manejarSeleccion(ArchivoModelo archivo, bool valor) {
     if (valor && vistaActual != "archivos") {
@@ -140,6 +146,53 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     });
   }
 
+  // --- LÓGICA DE SELECCIONAR INTERVALO ---
+  void _seleccionarIntervalo() {
+    if (archivosSeleccionados.length < 2) return;
+
+    setState(() {
+      if (vistaActual == "archivos") {
+        List<int> indices = [];
+        for (int i = 0; i < archivosFiltrados.length; i++) {
+          if (archivosFiltrados[i].seleccionado) indices.add(i);
+        }
+        if (indices.isNotEmpty) {
+          int minIdx = indices.reduce(min);
+          int maxIdx = indices.reduce(max);
+          for (int i = minIdx; i <= maxIdx; i++) {
+            archivosFiltrados[i].seleccionado = true;
+          }
+        }
+      } else {
+        String rutaPadre = File(
+          archivosSeleccionados.first.rutaCompleta,
+        ).parent.path;
+        CarpetaModelo? carpetaActiva;
+        try {
+          carpetaActiva = carpetasFiltradas.firstWhere(
+            (c) => c.rutaCompleta == rutaPadre,
+          );
+        } catch (e) {
+          carpetaActiva = null;
+        }
+
+        if (carpetaActiva != null) {
+          List<int> indices = [];
+          for (int i = 0; i < carpetaActiva.archivos.length; i++) {
+            if (carpetaActiva.archivos[i].seleccionado) indices.add(i);
+          }
+          if (indices.isNotEmpty) {
+            int minIdx = indices.reduce(min);
+            int maxIdx = indices.reduce(max);
+            for (int i = minIdx; i <= maxIdx; i++) {
+              carpetaActiva.archivos[i].seleccionado = true;
+            }
+          }
+        }
+      }
+    });
+  }
+
   void _alternarModoSeleccion() {
     setState(() {
       modoSeleccion = !modoSeleccion;
@@ -158,8 +211,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
       }
     });
   }
-
-  // --- VISTAS Y FILTROS ---
 
   void _actualizarVista() {
     if (vistaActual == "agrupada") {
@@ -207,7 +258,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
   void _vistaAgrupadaNormal() {
     vistaActual = "agrupada";
     List<CarpetaModelo> ordenados = List.from(datosCarpetas);
-    // Ordenar por ruta asegura que las subcarpetas queden debajo de sus padres
     ordenados.sort((a, b) => a.rutaCompleta.compareTo(b.rutaCompleta));
     _aplicarFiltroCarpetas(ordenados);
   }
@@ -237,7 +287,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     });
   }
 
-  // --- LÓGICAS DE RENOMBRADO ---
   void _procesarRenombrado(Function(ArchivoModelo, String, String) logica) {
     try {
       int renombrados = 0;
@@ -356,7 +405,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     );
   }
 
-  // --- INTERFAZ UI ---
   String _formatearTamano(int bytes) {
     if (bytes < 1024) return "$bytes B";
     if (bytes < 1048576) return "${(bytes / 1024).toStringAsFixed(2)} KB";
@@ -464,40 +512,59 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
       bottomNavigationBar: (modoSeleccion && haySeleccion)
           ? BottomAppBar(
               color: Colors.blueGrey.shade50,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8.0,
-                  vertical: 4.0,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    Text(
-                      '${archivosSeleccionados.length} selecc.',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    ElevatedButton(
-                      onPressed: _quitarSufijoCopia,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red.shade100,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8.0,
+                    vertical: 4.0,
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${archivosSeleccionados.length} selecc.',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      child: const Text('Quitar " (1)"'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () => _dialogoRenombrar(false),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange.shade100,
+                      const SizedBox(width: 16),
+
+                      // Botón de Selección de Intervalo
+                      if (archivosSeleccionados.length >= 2) ...[
+                        ElevatedButton.icon(
+                          onPressed: _seleccionarIntervalo,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.purple.shade100,
+                          ),
+                          icon: const Icon(Icons.format_line_spacing, size: 18),
+                          label: const Text('Seleccionar Intervalo'),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+
+                      ElevatedButton(
+                        onPressed: _quitarSufijoCopia,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red.shade100,
+                        ),
+                        child: const Text('Quitar " (1)"'),
                       ),
-                      child: const Text('Renombrar (Conserva N°)'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () => _dialogoRenombrar(true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green.shade100,
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () => _dialogoRenombrar(false),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange.shade100,
+                        ),
+                        child: const Text('Renombrar (Conserva N°)'),
                       ),
-                      child: const Text('Renombrar Secuencia'),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () => _dialogoRenombrar(true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green.shade100,
+                        ),
+                        child: const Text('Renombrar Secuencia'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             )
@@ -510,18 +577,14 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
       itemCount: carpetasFiltradas.length,
       itemBuilder: (context, index) {
         final carpeta = carpetasFiltradas[index];
-
-        // Determina cuánta sangría aplicar basado en la profundidad del folder
         int profundidad = vistaActual == "agrupada"
             ? _calcularProfundidad(carpeta.rutaCompleta)
             : 0;
 
         return Container(
-          // Sangría escalonada según la profundidad
           margin: EdgeInsets.only(left: profundidad * 24.0),
           decoration: profundidad > 0
               ? BoxDecoration(
-                  // Línea vertical izquierda de conexión
                   border: Border(
                     left: BorderSide(
                       color: Colors.blueGrey.shade200,
@@ -538,7 +601,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
               leading: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Flecha horizontal si es una subcarpeta
                   if (profundidad > 0)
                     const Icon(
                       Icons.subdirectory_arrow_right,
@@ -546,7 +608,16 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                       size: 16,
                     ),
                   if (profundidad > 0) const SizedBox(width: 4),
-                  const Icon(Icons.folder, color: Colors.amber),
+
+                  // Renderiza el Icono ICO o el predeterminado
+                  carpeta.iconoPath != null
+                      ? Image.file(
+                          File(carpeta.iconoPath!),
+                          width: 24,
+                          height: 24,
+                          fit: BoxFit.contain,
+                        )
+                      : const Icon(Icons.folder, color: Colors.amber),
                 ],
               ),
               title: Text(

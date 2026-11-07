@@ -5,11 +5,13 @@ class CarpetaModelo {
   final String nombre;
   final int tamanoBytes;
   final List<ArchivoModelo> archivos;
+  final String? iconoPath; // Nueva propiedad para la imagen ICO
 
   CarpetaModelo({
     required this.rutaCompleta,
     required this.nombre,
     required this.tamanoBytes,
     required this.archivos,
+    this.iconoPath,
   });
 }
