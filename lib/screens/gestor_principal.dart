@@ -81,7 +81,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     agrupacion.forEach((ruta, archivos) {
       int tamanoTotal = archivos.fold(0, (sum, a) => sum + a.tamanoBytes);
 
-      // Busca el primer archivo ICO para usarlo como icono de la carpeta
       String? icono;
       try {
         icono = archivos.firstWhere((a) => a.tipo == 'ico').rutaCompleta;
@@ -146,7 +145,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     });
   }
 
-  // --- LÓGICA DE SELECCIONAR INTERVALO ---
   void _seleccionarIntervalo() {
     if (archivosSeleccionados.length < 2) return;
 
@@ -449,17 +447,67 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 1. Mostrar la ruta de los archivos (Directorio Base)
           Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: TextField(
-              controller: searchController,
-              decoration: const InputDecoration(
-                labelText: '🔍 Buscar archivos o carpetas',
-                border: OutlineInputBorder(),
-                isDense: true,
+            padding: const EdgeInsets.only(left: 12.0, top: 12.0, right: 12.0),
+            child: Text(
+              "Directorio Actual: $directorioBase",
+              style: const TextStyle(
+                color: Colors.grey,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
               ),
             ),
           ),
+
+          // 2. Buscador más chico alineado a la izquierda + Botón Expandir/Contraer
+          Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 350, // Hace la barra de búsqueda más pequeña
+                  child: TextField(
+                    controller: searchController,
+                    decoration: InputDecoration(
+                      labelText: '🔍 Buscar archivos o carpetas',
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                      // Botón "X" de borrado rápido
+                      suffixIcon: searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                searchController.clear();
+                                FocusScope.of(
+                                  context,
+                                ).unfocus(); // Quita el teclado/foco
+                              },
+                            )
+                          : null,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+
+                // 3. Botón de Contraer/Expandir
+                ElevatedButton.icon(
+                  onPressed: vistaActual == "archivos"
+                      ? null
+                      : () {
+                          setState(() {
+                            expandirTodo = !expandirTodo;
+                          });
+                        },
+                  icon: Icon(
+                    expandirTodo ? Icons.unfold_less : Icons.unfold_more,
+                  ),
+                  label: Text(expandirTodo ? 'Contraer Todo' : 'Expandir Todo'),
+                ),
+              ],
+            ),
+          ),
+
           Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: 12.0,
@@ -527,7 +575,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                       ),
                       const SizedBox(width: 16),
 
-                      // Botón de Selección de Intervalo
                       if (archivosSeleccionados.length >= 2) ...[
                         ElevatedButton.icon(
                           onPressed: _seleccionarIntervalo,
@@ -609,7 +656,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                     ),
                   if (profundidad > 0) const SizedBox(width: 4),
 
-                  // Renderiza el Icono ICO o el predeterminado
                   carpeta.iconoPath != null
                       ? Image.file(
                           File(carpeta.iconoPath!),
