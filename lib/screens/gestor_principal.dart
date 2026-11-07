@@ -23,11 +23,8 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
 
   TextEditingController searchController = TextEditingController();
 
-  // 1. Carpetas contraídas por defecto
   bool expandirTodo = false;
   String vistaActual = "agrupada";
-
-  // 2. Control del modo de selección
   bool modoSeleccion = false;
 
   List<ArchivoModelo> get archivosSeleccionados =>
@@ -47,7 +44,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     List<CarpetaModelo> carpetasTemp = [];
     List<ArchivoModelo> archivosTemp = [];
 
-    // 3. Filtro de extensiones permitidas
     const List<String> extensionesValidas = ['mp4', 'mov', 'mkv', 'avi', 'ico'];
 
     List<FileSystemEntity> entidades = dir.listSync(recursive: true);
@@ -60,7 +56,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
             ? nombre.split('.').last.toLowerCase()
             : '';
 
-        // Ignorar el archivo si no tiene una extensión de la lista
         if (!extensionesValidas.contains(ext)) continue;
 
         String parentPath = entidad.parent.path;
@@ -96,11 +91,21 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
       );
     });
 
-    setState(() {
-      datosCarpetas = carpetasTemp;
-      todosLosArchivos = archivosTemp;
-      _vistaAgrupadaNormal();
-    });
+    // CORRECCIÓN: Respetar la vista actual al recargar después de un renombrado
+    datosCarpetas = carpetasTemp;
+    todosLosArchivos = archivosTemp;
+    _actualizarVista();
+  }
+
+  // --- LÓGICA DE JERARQUÍA VISUAL ---
+
+  int _calcularProfundidad(String ruta) {
+    if (ruta.length <= directorioBase.length) return 0;
+    String relativa = ruta.substring(directorioBase.length);
+    if (relativa.startsWith(Platform.pathSeparator)) {
+      relativa = relativa.substring(1);
+    }
+    return relativa.isEmpty ? 0 : relativa.split(Platform.pathSeparator).length;
   }
 
   // --- LÓGICA DE RESTRICCIÓN DE SELECCIÓN ---
@@ -114,7 +119,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
           archivosSeleccionados.first.rutaCompleta,
         ).parent.path;
 
-        // Si el archivo pertenece a otra carpeta, desmarcamos los anteriores
         if (rutaPadreActual != nuevaRutaPadre) {
           for (var a in archivosSeleccionados) {
             a.seleccionado = false;
@@ -122,7 +126,9 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
           ScaffoldMessenger.of(context).clearSnackBars();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Se desmarcaron los archivos de la otra carpeta.'),
+              content: Text(
+                'Se desmarcaron los archivos de la otra carpeta para evitar conflictos.',
+              ),
               duration: Duration(seconds: 2),
             ),
           );
@@ -138,7 +144,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     setState(() {
       modoSeleccion = !modoSeleccion;
       if (!modoSeleccion) {
-        // Al apagar el modo de selección, desmarcar todo automáticamente
         for (var a in todosLosArchivos) {
           a.seleccionado = false;
         }
@@ -157,18 +162,19 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
   // --- VISTAS Y FILTROS ---
 
   void _actualizarVista() {
-    if (vistaActual == "agrupada")
+    if (vistaActual == "agrupada") {
       _vistaAgrupadaNormal();
-    else if (vistaActual == "ordenada")
+    } else if (vistaActual == "ordenada") {
       _vistaOrdenadaNombre();
-    else if (vistaActual == "archivos")
+    } else if (vistaActual == "archivos") {
       _vistaArchivosPorTamano();
+    }
   }
 
   void _aplicarFiltroCarpetas(List<CarpetaModelo> base) {
     String query = searchController.text.toLowerCase();
     if (query.isEmpty) {
-      carpetasFiltradas = List.from(base);
+      setState(() => carpetasFiltradas = List.from(base));
       return;
     }
 
@@ -192,42 +198,42 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
         );
       }
     }
-    carpetasFiltradas = filtrado;
-    expandirTodo = true;
+    setState(() {
+      carpetasFiltradas = filtrado;
+      expandirTodo = true;
+    });
   }
 
   void _vistaAgrupadaNormal() {
-    setState(() {
-      vistaActual = "agrupada";
-      List<CarpetaModelo> ordenados = List.from(datosCarpetas);
-      ordenados.sort((a, b) => a.rutaCompleta.compareTo(b.rutaCompleta));
-      _aplicarFiltroCarpetas(ordenados);
-    });
+    vistaActual = "agrupada";
+    List<CarpetaModelo> ordenados = List.from(datosCarpetas);
+    // Ordenar por ruta asegura que las subcarpetas queden debajo de sus padres
+    ordenados.sort((a, b) => a.rutaCompleta.compareTo(b.rutaCompleta));
+    _aplicarFiltroCarpetas(ordenados);
   }
 
   void _vistaOrdenadaNombre() {
-    setState(() {
-      vistaActual = "ordenada";
-      List<CarpetaModelo> ordenados = List.from(datosCarpetas);
-      ordenados.sort(
-        (a, b) => a.nombre.toLowerCase().compareTo(b.nombre.toLowerCase()),
-      );
-      _aplicarFiltroCarpetas(ordenados);
-    });
+    vistaActual = "ordenada";
+    List<CarpetaModelo> ordenados = List.from(datosCarpetas);
+    ordenados.sort(
+      (a, b) => a.nombre.toLowerCase().compareTo(b.nombre.toLowerCase()),
+    );
+    _aplicarFiltroCarpetas(ordenados);
   }
 
   void _vistaArchivosPorTamano() {
+    vistaActual = "archivos";
+    String query = searchController.text.toLowerCase();
+
+    List<ArchivoModelo> filtrados = query.isEmpty
+        ? List.from(todosLosArchivos)
+        : todosLosArchivos
+              .where((a) => a.nombre.toLowerCase().contains(query))
+              .toList();
+
+    filtrados.sort((a, b) => b.tamanoBytes.compareTo(a.tamanoBytes));
     setState(() {
-      vistaActual = "archivos";
-      String query = searchController.text.toLowerCase();
-
-      archivosFiltrados = query.isEmpty
-          ? List.from(todosLosArchivos)
-          : todosLosArchivos
-                .where((a) => a.nombre.toLowerCase().contains(query))
-                .toList();
-
-      archivosFiltrados.sort((a, b) => b.tamanoBytes.compareTo(a.tamanoBytes));
+      archivosFiltrados = filtrados;
     });
   }
 
@@ -367,7 +373,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
         title: const Text('Gestor Avanzado de Archivos'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
-          // Botón principal para Activar/Desactivar selección
           TextButton.icon(
             onPressed: _alternarModoSeleccion,
             icon: Icon(
@@ -379,7 +384,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
               style: const TextStyle(color: Colors.black87),
             ),
           ),
-          // Botón "Marcar todo" (Solo disponible en la vista de lista plana y modo selección activo)
           if (modoSeleccion && vistaActual == "archivos")
             TextButton.icon(
               onPressed: () => _marcarTodos(!haySeleccion),
@@ -422,9 +426,9 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                         ? Colors.blue.shade100
                         : null,
                   ),
-                  onPressed: _vistaAgrupadaNormal,
-                  icon: const Icon(Icons.folder),
-                  label: const Text('Agrupar por Carpetas'),
+                  onPressed: () => setState(() => _vistaAgrupadaNormal()),
+                  icon: const Icon(Icons.folder_copy),
+                  label: const Text('Agrupar por Jerarquía'),
                 ),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
@@ -432,7 +436,7 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                         ? Colors.yellow.shade100
                         : null,
                   ),
-                  onPressed: _vistaOrdenadaNombre,
+                  onPressed: () => setState(() => _vistaOrdenadaNombre()),
                   icon: const Icon(Icons.sort_by_alpha),
                   label: const Text('Carpetas por Nombre'),
                 ),
@@ -442,7 +446,7 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                         ? Colors.deepOrange.shade100
                         : null,
                   ),
-                  onPressed: _vistaArchivosPorTamano,
+                  onPressed: () => setState(() => _vistaArchivosPorTamano()),
                   icon: const Icon(Icons.balance),
                   label: const Text('Lista Plana por Tamaño'),
                 ),
@@ -506,49 +510,84 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
       itemCount: carpetasFiltradas.length,
       itemBuilder: (context, index) {
         final carpeta = carpetasFiltradas[index];
-        return Theme(
-          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-          child: ExpansionTile(
-            key: Key('${carpeta.rutaCompleta}_$expandirTodo'),
-            initiallyExpanded: expandirTodo,
-            leading: const Icon(Icons.folder, color: Colors.amber),
-            title: Text(
-              carpeta.nombre,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            subtitle: Text(_formatearTamano(carpeta.tamanoBytes)),
-            children: carpeta.archivos.map((archivo) {
-              return ListTile(
-                contentPadding: const EdgeInsets.only(left: 40, right: 16),
-                // Solo renderiza el checkbox si el modo selección está activo
-                leading: modoSeleccion
-                    ? Checkbox(
-                        value: archivo.seleccionado,
-                        onChanged: (val) =>
-                            _manejarSeleccion(archivo, val ?? false),
-                      )
-                    : const Icon(
-                        Icons.insert_drive_file,
-                        color: Colors.blueGrey,
-                      ),
-                title: Text(archivo.nombre),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      archivo.tipo.toUpperCase(),
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+
+        // Determina cuánta sangría aplicar basado en la profundidad del folder
+        int profundidad = vistaActual == "agrupada"
+            ? _calcularProfundidad(carpeta.rutaCompleta)
+            : 0;
+
+        return Container(
+          // Sangría escalonada según la profundidad
+          margin: EdgeInsets.only(left: profundidad * 24.0),
+          decoration: profundidad > 0
+              ? BoxDecoration(
+                  // Línea vertical izquierda de conexión
+                  border: Border(
+                    left: BorderSide(
+                      color: Colors.blueGrey.shade200,
+                      width: 2.0,
                     ),
-                    const SizedBox(width: 16),
-                    Text(_formatearTamano(archivo.tamanoBytes)),
-                  ],
-                ),
-                // Permite tocar toda la fila para marcar si estamos en modo selección
-                onTap: modoSeleccion
-                    ? () => _manejarSeleccion(archivo, !archivo.seleccionado)
-                    : null,
-              );
-            }).toList(),
+                  ),
+                )
+              : null,
+          child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              key: Key('${carpeta.rutaCompleta}_$expandirTodo'),
+              initiallyExpanded: expandirTodo,
+              leading: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Flecha horizontal si es una subcarpeta
+                  if (profundidad > 0)
+                    const Icon(
+                      Icons.subdirectory_arrow_right,
+                      color: Colors.grey,
+                      size: 16,
+                    ),
+                  if (profundidad > 0) const SizedBox(width: 4),
+                  const Icon(Icons.folder, color: Colors.amber),
+                ],
+              ),
+              title: Text(
+                carpeta.nombre,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(_formatearTamano(carpeta.tamanoBytes)),
+              children: carpeta.archivos.map((archivo) {
+                return ListTile(
+                  contentPadding: const EdgeInsets.only(left: 40, right: 16),
+                  leading: modoSeleccion
+                      ? Checkbox(
+                          value: archivo.seleccionado,
+                          onChanged: (val) =>
+                              _manejarSeleccion(archivo, val ?? false),
+                        )
+                      : const Icon(
+                          Icons.insert_drive_file,
+                          color: Colors.blueGrey,
+                        ),
+                  title: Text(archivo.nombre),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        archivo.tipo.toUpperCase(),
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Text(_formatearTamano(archivo.tamanoBytes)),
+                    ],
+                  ),
+                  onTap: modoSeleccion
+                      ? () => _manejarSeleccion(archivo, !archivo.seleccionado)
+                      : null,
+                );
+              }).toList(),
+            ),
           ),
         );
       },
