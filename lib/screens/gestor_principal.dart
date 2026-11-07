@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import '../models/carpeta_modelo.dart';
 import '../models/archivo_modelo.dart';
 
-// Variable global para controlar el Modo Oscuro/Claro desde toda la app
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
 class GestorPrincipal extends StatefulWidget {
@@ -17,8 +16,10 @@ class GestorPrincipal extends StatefulWidget {
 }
 
 class _GestorPrincipalState extends State<GestorPrincipal> {
-  // ATENCIÓN: Asegúrate de mantener la ruta a tu carpeta real
   String directorioBase = r"D:\Videos";
+
+  // RUTA DE MKVTOOLNIX: Modifícala si la instalaste en otro disco o carpeta
+  String rutaMkvpropedit = r"C:\Program Files\MKVToolNix\mkvpropedit.exe";
 
   List<CarpetaModelo> datosCarpetas = [];
   List<CarpetaModelo> carpetasFiltradas = [];
@@ -288,6 +289,7 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     });
   }
 
+  // --- LÓGICA DE RENOMBRADO FÍSICO ---
   void _procesarRenombrado(Function(ArchivoModelo, String, String) logica) {
     try {
       int renombrados = 0;
@@ -406,6 +408,65 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     );
   }
 
+  // --- LÓGICA DE METADATOS MKVTOOLNIX ---
+  Future<void> _modificarMetadatoTitulo(bool limpiar) async {
+    if (!File(rutaMkvpropedit).existsSync()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Error: mkvpropedit.exe no encontrado en la ruta indicada.',
+            style: TextStyle(color: Colors.red),
+          ),
+        ),
+      );
+      return;
+    }
+
+    int procesados = 0;
+    int errores = 0;
+
+    for (var archivo in archivosSeleccionados) {
+      if (archivo.tipo != 'mkv') continue; // Solo procesa archivos MKV
+
+      List<String> argumentos = [archivo.rutaCompleta];
+
+      if (limpiar) {
+        argumentos.addAll(['--delete', 'title']);
+      } else {
+        // Elimina la extensión para usar el nombre limpio como título
+        String nombreBase = archivo.nombre.substring(
+          0,
+          archivo.nombre.lastIndexOf('.'),
+        );
+        argumentos.addAll(['--edit', 'info', '--set', 'title=$nombreBase']);
+      }
+
+      try {
+        // Ejecución nativa del comando en segundo plano
+        var result = await Process.run(rutaMkvpropedit, argumentos);
+
+        // Códigos de salida de MKVToolNix: 0 (OK), 1 (Advertencias), 2 (Error)
+        if (result.exitCode == 0 || result.exitCode == 1) {
+          procesados++;
+        } else {
+          errores++;
+        }
+      } catch (e) {
+        errores++;
+      }
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Metadatos: $procesados actualizados. ${errores > 0 ? '($errores fallos)' : ''}',
+          ),
+        ),
+      );
+    }
+  }
+
   String _formatearTamano(int bytes) {
     if (bytes < 1024) return "$bytes B";
     if (bytes < 1048576) return "${(bytes / 1024).toStringAsFixed(2)} KB";
@@ -424,7 +485,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
         title: const Text('Gestor Avanzado de Archivos'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
-          // Botón para alternar el Modo Oscuro
           IconButton(
             icon: Icon(
               isDark ? Icons.light_mode : Icons.dark_mode,
@@ -503,15 +563,12 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                       labelText: '🔍 Buscar archivos o carpetas',
                       border: const OutlineInputBorder(),
                       isDense: true,
-                      // Botón "X" rápido (solo visible si hay texto)
                       suffixIcon: searchController.text.isNotEmpty
                           ? IconButton(
                               icon: const Icon(Icons.clear),
                               onPressed: () {
                                 searchController.clear();
-                                FocusScope.of(
-                                  context,
-                                ).unfocus(); // Oculta el teclado si está abierto
+                                FocusScope.of(context).unfocus();
                               },
                             )
                           : null,
@@ -604,11 +661,36 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                                 : Colors.purple.shade100,
                           ),
                           icon: const Icon(Icons.format_line_spacing, size: 18),
-                          label: const Text('Seleccionar Intervalo'),
+                          label: const Text('Intervalo'),
                         ),
                         const SizedBox(width: 8),
                       ],
 
+                      // --- BOTONES DE MKVTOOLNIX ---
+                      ElevatedButton.icon(
+                        onPressed: () => _modificarMetadatoTitulo(true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isDark
+                              ? Colors.blue.shade900
+                              : Colors.blue.shade100,
+                        ),
+                        icon: const Icon(Icons.title, size: 18),
+                        label: const Text('Borrar Título MKV'),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: () => _modificarMetadatoTitulo(false),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isDark
+                              ? Colors.teal.shade900
+                              : Colors.teal.shade100,
+                        ),
+                        icon: const Icon(Icons.sync, size: 18),
+                        label: const Text('Título = Nombre MKV'),
+                      ),
+                      const SizedBox(width: 8),
+
+                      // --- BOTONES DE RENOMBRADO ---
                       ElevatedButton(
                         onPressed: _quitarSufijoCopia,
                         style: ElevatedButton.styleFrom(
