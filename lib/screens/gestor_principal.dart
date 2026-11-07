@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'dart:convert'; // NUEVO: Necesario para leer el JSON de MKVToolNix
 import 'package:flutter/material.dart';
 //import 'package:intl/intl.dart';
 
@@ -18,8 +19,10 @@ class GestorPrincipal extends StatefulWidget {
 class _GestorPrincipalState extends State<GestorPrincipal> {
   String directorioBase = r"D:\Videos";
 
-  // RUTA DE MKVTOOLNIX: Modifícala si la instalaste en otro disco o carpeta
+  // RUTAS DE MKVTOOLNIX: Modifícalas si las instalaste en otro disco
   String rutaMkvpropedit = r"C:\Program Files\MKVToolNix\mkvpropedit.exe";
+  String rutaMkvmerge = r"C:\Program Files\MKVToolNix\mkvmerge.exe";
+  String rutaMkvextract = r"C:\Program Files\MKVToolNix\mkvextract.exe";
 
   List<CarpetaModelo> datosCarpetas = [];
   List<CarpetaModelo> carpetasFiltradas = [];
@@ -135,9 +138,7 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
           ScaffoldMessenger.of(context).clearSnackBars();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                'Se desmarcaron los archivos de la otra carpeta para evitar conflictos.',
-              ),
+              content: Text('Se desmarcaron los archivos de la otra carpeta.'),
               duration: Duration(seconds: 2),
             ),
           );
@@ -414,7 +415,7 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Error: mkvpropedit.exe no encontrado en la ruta indicada.',
+            'Error: mkvpropedit.exe no encontrado.',
             style: TextStyle(color: Colors.red),
           ),
         ),
@@ -423,48 +424,169 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     }
 
     int procesados = 0;
-    int errores = 0;
-
     for (var archivo in archivosSeleccionados) {
-      if (archivo.tipo != 'mkv') continue; // Solo procesa archivos MKV
-
-      List<String> argumentos = [archivo.rutaCompleta];
-
+      if (archivo.tipo != 'mkv') continue;
+      List<String> args = [archivo.rutaCompleta];
       if (limpiar) {
-        argumentos.addAll(['--delete', 'title']);
+        args.addAll(['--delete', 'title']);
       } else {
-        // Elimina la extensión para usar el nombre limpio como título
         String nombreBase = archivo.nombre.substring(
           0,
           archivo.nombre.lastIndexOf('.'),
         );
-        argumentos.addAll(['--edit', 'info', '--set', 'title=$nombreBase']);
+        args.addAll(['--edit', 'info', '--set', 'title=$nombreBase']);
       }
-
-      try {
-        // Ejecución nativa del comando en segundo plano
-        var result = await Process.run(rutaMkvpropedit, argumentos);
-
-        // Códigos de salida de MKVToolNix: 0 (OK), 1 (Advertencias), 2 (Error)
-        if (result.exitCode == 0 || result.exitCode == 1) {
-          procesados++;
-        } else {
-          errores++;
-        }
-      } catch (e) {
-        errores++;
-      }
+      var result = await Process.run(rutaMkvpropedit, args);
+      if (result.exitCode == 0 || result.exitCode == 1) procesados++;
     }
-
-    if (mounted) {
+    if (mounted)
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        SnackBar(content: Text('Títulos: $procesados actualizados.')),
+      );
+  }
+
+  // --- NUEVA LÓGICA: LIMPIEZA DE SUBTÍTULOS (.ASS) ---
+  Future<void> _procesarLimpiezaSubtitulos(String textoBuscado) async {
+    if (!File(rutaMkvmerge).existsSync() ||
+        !File(rutaMkvextract).existsSync()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
           content: Text(
-            'Metadatos: $procesados actualizados. ${errores > 0 ? '($errores fallos)' : ''}',
+            'Error: mkvmerge o mkvextract no encontrados.',
+            style: TextStyle(color: Colors.red),
           ),
         ),
       );
+      return;
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Procesando limpieza de subtítulos, espera...'),
+      ),
+    );
+    int procesados = 0;
+
+    for (var archivo in archivosSeleccionados) {
+      if (archivo.tipo != 'mkv') continue;
+
+      // 1. Analizar el archivo para encontrar los IDs de los tracks .ass
+      var resultJ = await Process.run(rutaMkvmerge, [
+        '-J',
+        archivo.rutaCompleta,
+      ]);
+      if (resultJ.exitCode != 0) continue;
+
+      var info = jsonDecode(resultJ.stdout);
+      List<int> tracksAss = [];
+      for (var track in info['tracks']) {
+        if (track['type'] == 'subtitles' &&
+            (track['codec'].toString().contains('SubStationAlpha') ||
+                track['codec'].toString().contains('ASS'))) {
+          tracksAss.add(track['id']);
+        }
+      }
+
+      if (tracksAss.isEmpty)
+        continue; // Si el video no tiene subs ASS, lo salta.
+
+      String tempDir = Directory.systemTemp.path;
+      List<String> nuevosAss = [];
+      List<String> argsExtract = ['tracks', archivo.rutaCompleta];
+
+      // 2. Extraer los subtítulos detectados a la carpeta temporal
+      for (int id in tracksAss) {
+        String pathAss =
+            '$tempDir\\sub_${id}_${DateTime.now().millisecondsSinceEpoch}.ass';
+        argsExtract.add('$id:$pathAss');
+        nuevosAss.add(pathAss);
+      }
+      await Process.run(rutaMkvextract, argsExtract);
+
+      // 3. Abrir el texto plano y borrar las líneas que contengan el texto maldito
+      for (String pathAss in nuevosAss) {
+        File fileAss = File(pathAss);
+        if (await fileAss.exists()) {
+          List<String> lineas = await fileAss.readAsLines();
+          List<String> limpias = lineas
+              .where(
+                (linea) =>
+                    !linea.toLowerCase().contains(textoBuscado.toLowerCase()),
+              )
+              .toList();
+          await fileAss.writeAsString(limpias.join('\n'));
+        }
+      }
+
+      // 4. Muxear el archivo MKV excluyendo los tracks originales y metiendo los limpios
+      String rutaNueva = archivo.rutaCompleta.replaceAll('.mkv', '_TEMP.mkv');
+      List<String> argsMerge = ['-o', rutaNueva];
+      argsMerge.addAll(['--subtitle-tracks', '!${tracksAss.join(',')}']);
+      argsMerge.add(archivo.rutaCompleta);
+      argsMerge.addAll(nuevosAss); // Añadir los nuevos ASS limpios
+
+      var mergeResult = await Process.run(rutaMkvmerge, argsMerge);
+
+      if (mergeResult.exitCode == 0 || mergeResult.exitCode == 1) {
+        // Reemplaza el archivo original por el limpio
+        File(archivo.rutaCompleta).deleteSync();
+        File(rutaNueva).renameSync(archivo.rutaCompleta);
+        procesados++;
+      }
+
+      // Limpieza de basura (Borra los ASS temporales)
+      for (String pathAss in nuevosAss) {
+        if (File(pathAss).existsSync()) File(pathAss).deleteSync();
+      }
+    }
+
+    _escanearDirectorio(); // Recarga la UI
+    if (mounted)
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Subtítulos limpios en $procesados videos.')),
+      );
+  }
+
+  void _dialogoLimpiarSubtitulos() {
+    TextEditingController textoCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Limpiar Subtítulos (.ASS)'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Se borrará toda línea de diálogo que contenga este texto en los MKV seleccionados.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: textoCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Texto o Link a borrar',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (textoCtrl.text.trim().isEmpty) return;
+              Navigator.pop(context);
+              _procesarLimpiezaSubtitulos(textoCtrl.text.trim());
+            },
+            child: const Text('Limpiar Subs'),
+          ),
+        ],
+      ),
+    );
   }
 
   String _formatearTamano(int bytes) {
@@ -667,6 +789,17 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                       ],
 
                       // --- BOTONES DE MKVTOOLNIX ---
+                      ElevatedButton.icon(
+                        onPressed: _dialogoLimpiarSubtitulos,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isDark
+                              ? Colors.deepPurple.shade900
+                              : Colors.deepPurple.shade100,
+                        ),
+                        icon: const Icon(Icons.subtitles_off, size: 18),
+                        label: const Text('Limpiar Subs (.ASS)'),
+                      ),
+                      const SizedBox(width: 8),
                       ElevatedButton.icon(
                         onPressed: () => _modificarMetadatoTitulo(true),
                         style: ElevatedButton.styleFrom(
