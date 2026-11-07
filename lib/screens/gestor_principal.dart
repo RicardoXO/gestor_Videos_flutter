@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import '../models/carpeta_modelo.dart';
 import '../models/archivo_modelo.dart';
 
+// Variable global para controlar el Modo Oscuro/Claro desde toda la app
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
+
 class GestorPrincipal extends StatefulWidget {
   const GestorPrincipal({super.key});
 
@@ -413,21 +416,34 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
   @override
   Widget build(BuildContext context) {
     bool haySeleccion = archivosSeleccionados.isNotEmpty;
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color iconTextColor = isDark ? Colors.white : Colors.black87;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Gestor Avanzado de Archivos'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
+          // Botón para alternar el Modo Oscuro
+          IconButton(
+            icon: Icon(
+              isDark ? Icons.light_mode : Icons.dark_mode,
+              color: iconTextColor,
+            ),
+            tooltip: 'Alternar Tema',
+            onPressed: () {
+              themeNotifier.value = isDark ? ThemeMode.light : ThemeMode.dark;
+            },
+          ),
           TextButton.icon(
             onPressed: _alternarModoSeleccion,
             icon: Icon(
               modoSeleccion ? Icons.cancel : Icons.checklist,
-              color: Colors.black87,
+              color: iconTextColor,
             ),
             label: Text(
               modoSeleccion ? "Cancelar Selección" : "Seleccionar",
-              style: const TextStyle(color: Colors.black87),
+              style: TextStyle(color: iconTextColor),
             ),
           ),
           if (modoSeleccion && vistaActual == "archivos")
@@ -435,19 +451,19 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
               onPressed: () => _marcarTodos(!haySeleccion),
               icon: Icon(
                 haySeleccion ? Icons.deselect : Icons.select_all,
-                color: Colors.black87,
+                color: iconTextColor,
               ),
               label: Text(
                 haySeleccion ? "Desmarcar" : "Marcar Todo",
-                style: const TextStyle(color: Colors.black87),
+                style: TextStyle(color: iconTextColor),
               ),
             ),
+          const SizedBox(width: 8),
         ],
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Mostrar la ruta de los archivos (Directorio Base)
           Padding(
             padding: const EdgeInsets.only(left: 12.0, top: 12.0, right: 12.0),
             child: Text(
@@ -460,37 +476,11 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
             ),
           ),
 
-          // 2. Buscador más chico alineado a la izquierda + Botón Expandir/Contraer
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                SizedBox(
-                  width: 350, // Hace la barra de búsqueda más pequeña
-                  child: TextField(
-                    controller: searchController,
-                    decoration: InputDecoration(
-                      labelText: '🔍 Buscar archivos o carpetas',
-                      border: const OutlineInputBorder(),
-                      isDense: true,
-                      // Botón "X" de borrado rápido
-                      suffixIcon: searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                searchController.clear();
-                                FocusScope.of(
-                                  context,
-                                ).unfocus(); // Quita el teclado/foco
-                              },
-                            )
-                          : null,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-
-                // 3. Botón de Contraer/Expandir
                 ElevatedButton.icon(
                   onPressed: vistaActual == "archivos"
                       ? null
@@ -503,6 +493,30 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                     expandirTodo ? Icons.unfold_less : Icons.unfold_more,
                   ),
                   label: Text(expandirTodo ? 'Contraer Todo' : 'Expandir Todo'),
+                ),
+
+                SizedBox(
+                  width: 350,
+                  child: TextField(
+                    controller: searchController,
+                    decoration: InputDecoration(
+                      labelText: '🔍 Buscar archivos o carpetas',
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                      // Botón "X" rápido (solo visible si hay texto)
+                      suffixIcon: searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                searchController.clear();
+                                FocusScope.of(
+                                  context,
+                                ).unfocus(); // Oculta el teclado si está abierto
+                              },
+                            )
+                          : null,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -519,7 +533,7 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: vistaActual == "agrupada"
-                        ? Colors.blue.shade100
+                        ? (isDark ? Colors.blue.shade900 : Colors.blue.shade100)
                         : null,
                   ),
                   onPressed: () => setState(() => _vistaAgrupadaNormal()),
@@ -529,7 +543,9 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: vistaActual == "ordenada"
-                        ? Colors.yellow.shade100
+                        ? (isDark
+                              ? Colors.amber.shade900
+                              : Colors.yellow.shade100)
                         : null,
                   ),
                   onPressed: () => setState(() => _vistaOrdenadaNombre()),
@@ -539,7 +555,9 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: vistaActual == "archivos"
-                        ? Colors.deepOrange.shade100
+                        ? (isDark
+                              ? Colors.deepOrange.shade900
+                              : Colors.deepOrange.shade100)
                         : null,
                   ),
                   onPressed: () => setState(() => _vistaArchivosPorTamano()),
@@ -559,7 +577,9 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
       ),
       bottomNavigationBar: (modoSeleccion && haySeleccion)
           ? BottomAppBar(
-              color: Colors.blueGrey.shade50,
+              color: isDark
+                  ? Colors.blueGrey.shade900
+                  : Colors.blueGrey.shade50,
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Padding(
@@ -579,7 +599,9 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                         ElevatedButton.icon(
                           onPressed: _seleccionarIntervalo,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.purple.shade100,
+                            backgroundColor: isDark
+                                ? Colors.purple.shade900
+                                : Colors.purple.shade100,
                           ),
                           icon: const Icon(Icons.format_line_spacing, size: 18),
                           label: const Text('Seleccionar Intervalo'),
@@ -590,7 +612,9 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                       ElevatedButton(
                         onPressed: _quitarSufijoCopia,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red.shade100,
+                          backgroundColor: isDark
+                              ? Colors.red.shade900
+                              : Colors.red.shade100,
                         ),
                         child: const Text('Quitar " (1)"'),
                       ),
@@ -598,7 +622,9 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                       ElevatedButton(
                         onPressed: () => _dialogoRenombrar(false),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange.shade100,
+                          backgroundColor: isDark
+                              ? Colors.orange.shade900
+                              : Colors.orange.shade100,
                         ),
                         child: const Text('Renombrar (Conserva N°)'),
                       ),
@@ -606,7 +632,9 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                       ElevatedButton(
                         onPressed: () => _dialogoRenombrar(true),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green.shade100,
+                          backgroundColor: isDark
+                              ? Colors.green.shade900
+                              : Colors.green.shade100,
                         ),
                         child: const Text('Renombrar Secuencia'),
                       ),
