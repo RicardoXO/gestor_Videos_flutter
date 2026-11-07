@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import '../models/carpeta_modelo.dart';
 import '../models/archivo_modelo.dart';
 
-// 1. MODO OSCURO POR DEFECTO
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
 
 class GestorPrincipal extends StatefulWidget {
@@ -46,11 +45,8 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     searchController.addListener(_actualizarVista);
   }
 
-  // --- NOTIFICACIONES SUPERIORES ---
   void _mostrarNotificacionArriba(String mensaje, {bool esError = false}) {
     if (!mounted) return;
-
-    // Calcula la altura para empujar el SnackBar hacia arriba
     final double alturaPantalla = MediaQuery.of(context).size.height;
 
     ScaffoldMessenger.of(context).clearSnackBars();
@@ -67,7 +63,7 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         margin: EdgeInsets.only(
-          bottom: alturaPantalla - 120, // Lo posiciona arriba
+          bottom: alturaPantalla - 120,
           left: 20,
           right: 20,
         ),
@@ -85,7 +81,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     List<ArchivoModelo> archivosTemp = [];
 
     const List<String> extensionesValidas = ['mp4', 'mov', 'mkv', 'avi', 'ico'];
-
     List<FileSystemEntity> entidades = dir.listSync(recursive: true);
     Map<String, List<ArchivoModelo>> agrupacion = {};
 
@@ -119,7 +114,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
 
     agrupacion.forEach((ruta, archivos) {
       int tamanoTotal = archivos.fold(0, (sum, a) => sum + a.tamanoBytes);
-
       String? icono;
       try {
         icono = archivos.firstWhere((a) => a.tipo == 'ico').rutaCompleta;
@@ -148,25 +142,20 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
   int _calcularProfundidad(String ruta) {
     if (ruta.length <= directorioBase.length) return 0;
     String relativa = ruta.substring(directorioBase.length);
-    if (relativa.startsWith(Platform.pathSeparator)) {
+    if (relativa.startsWith(Platform.pathSeparator))
       relativa = relativa.substring(1);
-    }
     return relativa.isEmpty ? 0 : relativa.split(Platform.pathSeparator).length;
   }
 
   void _manejarSeleccion(ArchivoModelo archivo, bool valor) {
     if (valor && vistaActual != "archivos") {
       String nuevaRutaPadre = File(archivo.rutaCompleta).parent.path;
-
       if (archivosSeleccionados.isNotEmpty) {
         String rutaPadreActual = File(
           archivosSeleccionados.first.rutaCompleta,
         ).parent.path;
-
         if (rutaPadreActual != nuevaRutaPadre) {
-          for (var a in archivosSeleccionados) {
-            a.seleccionado = false;
-          }
+          for (var a in archivosSeleccionados) a.seleccionado = false;
           _mostrarNotificacionArriba(
             'Se desmarcaron los archivos de la otra carpeta para evitar conflictos.',
             esError: true,
@@ -174,14 +163,11 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
         }
       }
     }
-    setState(() {
-      archivo.seleccionado = valor;
-    });
+    setState(() => archivo.seleccionado = valor);
   }
 
   void _seleccionarIntervalo() {
     if (archivosSeleccionados.length < 2) return;
-
     setState(() {
       if (vistaActual == "archivos") {
         List<int> indices = [];
@@ -191,9 +177,8 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
         if (indices.isNotEmpty) {
           int minIdx = indices.reduce(min);
           int maxIdx = indices.reduce(max);
-          for (int i = minIdx; i <= maxIdx; i++) {
+          for (int i = minIdx; i <= maxIdx; i++)
             archivosFiltrados[i].seleccionado = true;
-          }
         }
       } else {
         String rutaPadre = File(
@@ -216,9 +201,8 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
           if (indices.isNotEmpty) {
             int minIdx = indices.reduce(min);
             int maxIdx = indices.reduce(max);
-            for (int i = minIdx; i <= maxIdx; i++) {
+            for (int i = minIdx; i <= maxIdx; i++)
               carpetaActiva.archivos[i].seleccionado = true;
-            }
           }
         }
       }
@@ -228,30 +212,24 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
   void _alternarModoSeleccion() {
     setState(() {
       modoSeleccion = !modoSeleccion;
-      if (!modoSeleccion) {
-        for (var a in todosLosArchivos) {
-          a.seleccionado = false;
-        }
-      }
+      if (!modoSeleccion)
+        for (var a in todosLosArchivos) a.seleccionado = false;
     });
   }
 
   void _marcarTodos(bool seleccionar) {
     setState(() {
-      for (var archivo in archivosFiltrados) {
-        archivo.seleccionado = seleccionar;
-      }
+      for (var archivo in archivosFiltrados) archivo.seleccionado = seleccionar;
     });
   }
 
   void _actualizarVista() {
-    if (vistaActual == "agrupada") {
+    if (vistaActual == "agrupada")
       _vistaAgrupadaNormal();
-    } else if (vistaActual == "ordenada") {
+    else if (vistaActual == "ordenada")
       _vistaOrdenadaNombre();
-    } else if (vistaActual == "archivos") {
+    else if (vistaActual == "archivos")
       _vistaArchivosPorTamano();
-    }
   }
 
   void _aplicarFiltroCarpetas(List<CarpetaModelo> base) {
@@ -267,7 +245,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
       List<ArchivoModelo> archivosCoincidentes = carpeta.archivos
           .where((a) => a.nombre.toLowerCase().contains(query))
           .toList();
-
       if (coincideCarpeta) {
         filtrado.add(carpeta);
       } else if (archivosCoincidentes.isNotEmpty) {
@@ -306,20 +283,16 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
   void _vistaArchivosPorTamano() {
     vistaActual = "archivos";
     String query = searchController.text.toLowerCase();
-
     List<ArchivoModelo> filtrados = query.isEmpty
         ? List.from(todosLosArchivos)
         : todosLosArchivos
               .where((a) => a.nombre.toLowerCase().contains(query))
               .toList();
-
     filtrados.sort((a, b) => b.tamanoBytes.compareTo(a.tamanoBytes));
-    setState(() {
-      archivosFiltrados = filtrados;
-    });
+    setState(() => archivosFiltrados = filtrados);
   }
 
-  // --- LÓGICA DE RENOMBRADO FÍSICO ---
+  // --- RENOMBRADO ---
   void _procesarRenombrado(Function(ArchivoModelo, String, String) logica) {
     try {
       int renombrados = 0;
@@ -329,9 +302,7 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
             ? archivo.nombre.substring(0, lastDot)
             : archivo.nombre;
         String ext = lastDot != -1 ? archivo.nombre.substring(lastDot) : '';
-
         String nuevoNombre = logica(archivo, nombreBase, ext);
-
         if (nuevoNombre != archivo.nombre && nuevoNombre.isNotEmpty) {
           String nuevaRuta =
               "${File(archivo.rutaCompleta).parent.path}${Platform.pathSeparator}$nuevoNombre";
@@ -350,18 +321,14 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
 
   void _quitarSufijoCopia() {
     _procesarRenombrado((archivo, nombreBase, ext) {
-      String nuevoBase = nombreBase.replaceAll(RegExp(r'\s\(\d+\)$'), '');
-      return "$nuevoBase$ext";
+      return "${nombreBase.replaceAll(RegExp(r'\s\(\d+\)$'), '')}$ext";
     });
   }
 
   void _renombrarMantieneNumero(String nombreDeseado) {
     _procesarRenombrado((archivo, nombreBase, ext) {
       Match? match = RegExp(r'(\d+)$').firstMatch(nombreBase.trim());
-      if (match != null) {
-        String numero = match.group(1)!;
-        return "$nombreDeseado $numero$ext";
-      }
+      if (match != null) return "$nombreDeseado ${match.group(1)!}$ext";
       return "";
     });
   }
@@ -369,7 +336,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
   void _renombrarSecuencial(String nombreDeseado, String inicioStr) {
     int length = inicioStr.length;
     int contador = int.tryParse(inicioStr) ?? 1;
-
     _procesarRenombrado((archivo, nombreBase, ext) {
       String numeroStr = contador.toString().padLeft(length, '0');
       contador++;
@@ -377,70 +343,15 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     });
   }
 
-  void _dialogoRenombrar(bool secuencial) {
-    TextEditingController nombreCtrl = TextEditingController();
-    TextEditingController numCtrl = TextEditingController(text: "01");
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          secuencial ? 'Renombrar en Secuencia' : 'Renombrar (Mantiene Número)',
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nombreCtrl,
-              decoration: const InputDecoration(labelText: 'Nuevo nombre base'),
-            ),
-            if (secuencial) ...[
-              const SizedBox(height: 10),
-              TextField(
-                controller: numCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Número de inicio (ej. 1, 01, 001)',
-                  hintText: '01',
-                ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (nombreCtrl.text.trim().isEmpty) return;
-              Navigator.pop(context);
-              if (secuencial) {
-                _renombrarSecuencial(
-                  nombreCtrl.text.trim(),
-                  numCtrl.text.trim(),
-                );
-              } else {
-                _renombrarMantieneNumero(nombreCtrl.text.trim());
-              }
-            },
-            child: const Text('Aplicar'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- LÓGICA DE METADATOS MKVTOOLNIX ---
+  // --- MKVTOOLNIX: METADATOS TÍTULO ---
   Future<void> _modificarMetadatoTitulo(bool limpiar) async {
     if (!File(rutaMkvpropedit).existsSync()) {
       _mostrarNotificacionArriba(
-        'Error: mkvpropedit.exe no encontrado en la ruta especificada.',
+        'Error: mkvpropedit.exe no encontrado.',
         esError: true,
       );
       return;
     }
-
     int procesados = 0;
     for (var archivo in archivosSeleccionados) {
       if (archivo.tipo != 'mkv') continue;
@@ -462,24 +373,336 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     );
   }
 
+  // --- MKVTOOLNIX: GESTION DE PISTAS (ELIMINAR AUDIO/SUBS) ---
+  Future<void> _dialogoGestionarPistas() async {
+    if (!File(rutaMkvmerge).existsSync()) {
+      _mostrarNotificacionArriba(
+        'Error: mkvmerge.exe no encontrado.',
+        esError: true,
+      );
+      return;
+    }
+
+    // Usamos el primer archivo MKV como base para leer la estructura de pistas
+    ArchivoModelo? archivoBase;
+    try {
+      archivoBase = archivosSeleccionados.firstWhere((a) => a.tipo == 'mkv');
+    } catch (e) {
+      _mostrarNotificacionArriba(
+        'Debes seleccionar al menos un archivo MKV.',
+        esError: true,
+      );
+      return;
+    }
+
+    var resultJ = await Process.run(rutaMkvmerge, [
+      '-J',
+      archivoBase.rutaCompleta,
+    ]);
+    if (resultJ.exitCode != 0) {
+      _mostrarNotificacionArriba(
+        'No se pudo analizar el archivo MKV seleccionado.',
+        esError: true,
+      );
+      return;
+    }
+
+    var info = jsonDecode(resultJ.stdout);
+    List pistasAudio = [];
+    List pistasSubs = [];
+
+    for (var track in info['tracks']) {
+      if (track['type'] == 'audio') pistasAudio.add(track);
+      if (track['type'] == 'subtitles') pistasSubs.add(track);
+    }
+
+    // Mostrar Diálogo con casillas para eliminar pistas
+    List<int> tracksAEliminarAudio = [];
+    List<int> tracksAEliminarSubs = [];
+
+    bool? proceder = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateSB) {
+            return AlertDialog(
+              title: const Text('Eliminar Pistas (Audio / Subs)'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (archivosSeleccionados
+                              .where((a) => a.tipo == 'mkv')
+                              .length >
+                          1)
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          color: Colors.orange.withOpacity(0.2),
+                          child: const Text(
+                            '⚠️ Se aplicará a múltiples videos. Se asume que todos tienen exactamente este mismo orden de pistas.',
+                            style: TextStyle(color: Colors.orange),
+                          ),
+                        ),
+                      const SizedBox(height: 10),
+
+                      const Text(
+                        'PISTAS DE AUDIO',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const Divider(),
+                      if (pistasAudio.isEmpty)
+                        const Text('No hay pistas de audio.'),
+                      ...pistasAudio.map((t) {
+                        bool eliminar = tracksAEliminarAudio.contains(t['id']);
+                        String lang = t['properties']?['language'] ?? 'und';
+                        String name =
+                            t['properties']?['track_name'] ?? 'Sin título';
+                        return CheckboxListTile(
+                          value: eliminar,
+                          activeColor: Colors.red.shade700,
+                          title: Text(
+                            'ID ${t['id']} [$lang] - $name',
+                            style: TextStyle(
+                              decoration: eliminar
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'Eliminar pista',
+                            style: TextStyle(
+                              color: eliminar ? Colors.red : null,
+                            ),
+                          ),
+                          secondary: const Icon(Icons.audiotrack),
+                          onChanged: (val) {
+                            setStateSB(() {
+                              if (val == true)
+                                tracksAEliminarAudio.add(t['id']);
+                              else
+                                tracksAEliminarAudio.remove(t['id']);
+                            });
+                          },
+                        );
+                      }),
+
+                      const SizedBox(height: 20),
+                      const Text(
+                        'SUBTÍTULOS',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const Divider(),
+                      if (pistasSubs.isEmpty)
+                        const Text('No hay pistas de subtítulos.'),
+                      ...pistasSubs.map((t) {
+                        bool eliminar = tracksAEliminarSubs.contains(t['id']);
+                        String lang = t['properties']?['language'] ?? 'und';
+                        String name =
+                            t['properties']?['track_name'] ?? 'Sin título';
+                        return CheckboxListTile(
+                          value: eliminar,
+                          activeColor: Colors.red.shade700,
+                          title: Text(
+                            'ID ${t['id']} [$lang] - $name',
+                            style: TextStyle(
+                              decoration: eliminar
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'Eliminar pista',
+                            style: TextStyle(
+                              color: eliminar ? Colors.red : null,
+                            ),
+                          ),
+                          secondary: const Icon(Icons.subtitles),
+                          onChanged: (val) {
+                            setStateSB(() {
+                              if (val == true)
+                                tracksAEliminarSubs.add(t['id']);
+                              else
+                                tracksAEliminarSubs.remove(t['id']);
+                            });
+                          },
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.shade800,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed:
+                      (tracksAEliminarAudio.isEmpty &&
+                          tracksAEliminarSubs.isEmpty)
+                      ? null
+                      : () => Navigator.pop(context, true),
+                  child: const Text('Eliminar Pistas Seleccionadas'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (proceder != true) return;
+
+    _mostrarNotificacionArriba(
+      'Remuxing archivos, esto tomará unos segundos...',
+    );
+    int procesados = 0;
+
+    for (var archivo in archivosSeleccionados.where((a) => a.tipo == 'mkv')) {
+      String rutaNueva = archivo.rutaCompleta.replaceAll('.mkv', '_TEMP.mkv');
+      List<String> argsMerge = ['-o', rutaNueva];
+
+      if (tracksAEliminarAudio.isNotEmpty) {
+        argsMerge.addAll([
+          '--audio-tracks',
+          '!${tracksAEliminarAudio.join(',')}',
+        ]);
+      }
+      if (tracksAEliminarSubs.isNotEmpty) {
+        argsMerge.addAll([
+          '--subtitle-tracks',
+          '!${tracksAEliminarSubs.join(',')}',
+        ]);
+      }
+      argsMerge.add(archivo.rutaCompleta);
+
+      var mergeResult = await Process.run(rutaMkvmerge, argsMerge);
+      if (mergeResult.exitCode == 0 || mergeResult.exitCode == 1) {
+        File(archivo.rutaCompleta).deleteSync();
+        File(rutaNueva).renameSync(archivo.rutaCompleta);
+        procesados++;
+      } else {
+        if (File(rutaNueva).existsSync()) File(rutaNueva).deleteSync();
+      }
+    }
+    _escanearDirectorio();
+    _mostrarNotificacionArriba(
+      'Se eliminaron pistas de $procesados videos correctamente.',
+    );
+  }
+
+  // --- MKVTOOLNIX: LIMPIEZA DE SUBTÍTULOS (.ASS) ---
+  Future<String?> _mostrarDialogoConfirmacionSubs(
+    String nombreArchivo,
+    List<String> lineas,
+  ) {
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Limpieza en: $nombreArchivo',
+          style: const TextStyle(fontSize: 16),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Se encontraron ${lineas.length} líneas basura:',
+                style: const TextStyle(color: Colors.orange),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 250),
+                padding: const EdgeInsets.all(8),
+                color: Colors.black12,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: lineas.length,
+                  itemBuilder: (c, i) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4.0),
+                    child: Text(
+                      lineas[i],
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                '¿Qué deseas hacer?',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'cancelar'),
+            child: const Text(
+              'Cancelar Proceso',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'omitir'),
+            child: const Text('Omitir este video'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, 'eliminar'),
+            child: const Text('Eliminar líneas'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade800,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(context, 'todos'),
+            child: const Text('Eliminar y Aplicar a Todos'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _procesarLimpiezaSubtitulos(String textoBuscado) async {
     if (!File(rutaMkvmerge).existsSync() ||
         !File(rutaMkvextract).existsSync()) {
       _mostrarNotificacionArriba(
-        'Error: mkvmerge.exe o mkvextract.exe no encontrados.',
+        'Error: mkvmerge o mkvextract no encontrados.',
         esError: true,
       );
       return;
     }
 
     _mostrarNotificacionArriba(
-      'Procesando limpieza de subtítulos ASS, por favor espera...',
+      'Extrayendo y analizando subtítulos, por favor espera...',
     );
 
     int procesados = 0;
-    int lineasBorradasTotales = 0; // CONTADOR DE LÍNEAS ELIMINADAS
+    int omitidos = 0;
+    int lineasBorradasTotales = 0;
+    bool aplicarATodos = false;
+    bool cancelarProceso = false;
 
     for (var archivo in archivosSeleccionados) {
+      if (cancelarProceso) break;
       if (archivo.tipo != 'mkv') continue;
 
       var resultJ = await Process.run(rutaMkvmerge, [
@@ -512,24 +735,60 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
       }
       await Process.run(rutaMkvextract, argsExtract);
 
+      List<String> todasLasLineasBorradas = [];
+      bool tieneCambios = false;
+
       for (String pathAss in nuevosAss) {
         File fileAss = File(pathAss);
         if (await fileAss.exists()) {
           List<String> lineas = await fileAss.readAsLines();
-
-          // Filtra las líneas y calcula la diferencia matemática
-          List<String> limpias = lineas
-              .where(
-                (linea) =>
-                    !linea.toLowerCase().contains(textoBuscado.toLowerCase()),
-              )
-              .toList();
-          lineasBorradasTotales += (lineas.length - limpias.length);
-
+          List<String> limpias = [];
+          for (var linea in lineas) {
+            if (linea.toLowerCase().contains(textoBuscado.toLowerCase())) {
+              todasLasLineasBorradas.add(linea);
+              tieneCambios = true;
+            } else {
+              limpias.add(linea);
+            }
+          }
           await fileAss.writeAsString(limpias.join('\n'));
         }
       }
 
+      // Si no hubo lineas encontradas, omite este video y no hace re-empaquetado.
+      if (!tieneCambios) {
+        for (String pathAss in nuevosAss)
+          if (File(pathAss).existsSync()) File(pathAss).deleteSync();
+        omitidos++;
+        continue;
+      }
+
+      // DIÁLOGO DE CONFIRMACIÓN
+      if (!aplicarATodos) {
+        String? accion = await _mostrarDialogoConfirmacionSubs(
+          archivo.nombre,
+          todasLasLineasBorradas,
+        );
+        if (accion == 'cancelar') {
+          cancelarProceso = true;
+          for (String pathAss in nuevosAss)
+            if (File(pathAss).existsSync()) File(pathAss).deleteSync();
+          break;
+        }
+        if (accion == 'omitir') {
+          omitidos++;
+          for (String pathAss in nuevosAss)
+            if (File(pathAss).existsSync()) File(pathAss).deleteSync();
+          continue;
+        }
+        if (accion == 'todos') {
+          aplicarATodos = true;
+        }
+        // Si es 'eliminar', continua el flujo normal.
+      }
+
+      // RE-EMPAQUETADO
+      lineasBorradasTotales += todasLasLineasBorradas.length;
       String rutaNueva = archivo.rutaCompleta.replaceAll('.mkv', '_TEMP.mkv');
       List<String> argsMerge = ['-o', rutaNueva];
       argsMerge.addAll(['--subtitle-tracks', '!${tracksAss.join(',')}']);
@@ -544,20 +803,19 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
         procesados++;
       }
 
-      for (String pathAss in nuevosAss) {
+      for (String pathAss in nuevosAss)
         if (File(pathAss).existsSync()) File(pathAss).deleteSync();
-      }
     }
 
     _escanearDirectorio();
     if (mounted) {
       _mostrarNotificacionArriba(
-        'Limpieza finalizada en $procesados videos. ¡Se eliminaron $lineasBorradasTotales líneas de texto basura en total!',
+        'Proceso terminado: $procesados editados, $omitidos sin cambios/omitidos. Se borraron $lineasBorradasTotales líneas basura.',
       );
     }
   }
 
-  void _dialogoLimpiarSubtitulos() {
+  void _dialogoLimpiarSubtitulosUI() {
     TextEditingController textoCtrl = TextEditingController();
 
     showDialog(
@@ -568,7 +826,7 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'Se borrará toda línea de diálogo que contenga el siguiente texto en los MKV seleccionados:',
+              'Se buscará el siguiente texto en los subtítulos de los MKV:',
               style: TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 10),
@@ -592,7 +850,61 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
               Navigator.pop(context);
               _procesarLimpiezaSubtitulos(textoCtrl.text.trim());
             },
-            child: const Text('Comenzar Limpieza'),
+            child: const Text('Comenzar Búsqueda'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- INTERFAZ ---
+  void _dialogoRenombrar(bool secuencial) {
+    TextEditingController nombreCtrl = TextEditingController();
+    TextEditingController numCtrl = TextEditingController(text: "01");
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          secuencial ? 'Renombrar en Secuencia' : 'Renombrar (Mantiene Número)',
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nombreCtrl,
+              decoration: const InputDecoration(labelText: 'Nuevo nombre base'),
+            ),
+            if (secuencial) ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: numCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Número de inicio (ej. 1, 01)',
+                  hintText: '01',
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (nombreCtrl.text.trim().isEmpty) return;
+              Navigator.pop(context);
+              if (secuencial)
+                _renombrarSecuencial(
+                  nombreCtrl.text.trim(),
+                  numCtrl.text.trim(),
+                );
+              else
+                _renombrarMantieneNumero(nombreCtrl.text.trim());
+            },
+            child: const Text('Aplicar'),
           ),
         ],
       ),
@@ -623,9 +935,8 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
               color: iconTextColor,
             ),
             tooltip: 'Alternar Tema',
-            onPressed: () {
-              themeNotifier.value = isDark ? ThemeMode.light : ThemeMode.dark;
-            },
+            onPressed: () =>
+                themeNotifier.value = isDark ? ThemeMode.light : ThemeMode.dark,
           ),
           TextButton.icon(
             onPressed: _alternarModoSeleccion,
@@ -647,7 +958,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Ruta Actual
           Padding(
             padding: const EdgeInsets.only(left: 12.0, top: 12.0, right: 12.0),
             child: Text(
@@ -659,8 +969,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
               ),
             ),
           ),
-
-          // Fila: Contraer y Buscador
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: Row(
@@ -669,17 +977,12 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                 ElevatedButton.icon(
                   onPressed: vistaActual == "archivos"
                       ? null
-                      : () {
-                          setState(() {
-                            expandirTodo = !expandirTodo;
-                          });
-                        },
+                      : () => setState(() => expandirTodo = !expandirTodo),
                   icon: Icon(
                     expandirTodo ? Icons.unfold_less : Icons.unfold_more,
                   ),
                   label: Text(expandirTodo ? 'Contraer Todo' : 'Expandir Todo'),
                 ),
-
                 SizedBox(
                   width: 350,
                   child: TextField(
@@ -703,8 +1006,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
               ],
             ),
           ),
-
-          // Vistas Principales
           Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: 12.0,
@@ -747,8 +1048,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                   icon: const Icon(Icons.balance),
                   label: const Text('Lista Plana por Tamaño'),
                 ),
-
-                // Botón "Marcar todo" adaptado a la vista plana si la selección está activa
                 if (modoSeleccion && vistaActual == "archivos")
                   ElevatedButton.icon(
                     onPressed: () => _marcarTodos(!haySeleccion),
@@ -768,7 +1067,7 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
             ),
           ),
 
-          // 2. NUEVO MENÚ SUPERIOR DE SELECCIÓN (Aparece cuando hay items marcados)
+          // PANEL SUPERIOR DE HERRAMIENTAS
           if (modoSeleccion && haySeleccion)
             Container(
               width: double.infinity,
@@ -801,14 +1100,13 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '${archivosSeleccionados.length} Archivos Seleccionados',
+                        '${archivosSeleccionados.length} Seleccionados',
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),
                       ),
                       const Spacer(),
-                      // 3. BOTÓN EXPLÍCITO DE DESMARCAR TODO
                       ElevatedButton.icon(
                         onPressed: () => _marcarTodos(false),
                         style: ElevatedButton.styleFrom(
@@ -846,9 +1144,20 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                           const SizedBox(width: 8),
                         ],
 
-                        // HERRAMIENTAS MKVTOOLNIX
+                        // BOTONES MKVTOOLNIX
                         ElevatedButton.icon(
-                          onPressed: _dialogoLimpiarSubtitulos,
+                          onPressed: _dialogoGestionarPistas,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isDark
+                                ? Colors.pink.shade900
+                                : Colors.pink.shade100,
+                          ),
+                          icon: const Icon(Icons.layers_clear, size: 18),
+                          label: const Text('Eliminar Pistas (Audio/Subs)'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: _dialogoLimpiarSubtitulosUI,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: isDark
                                 ? Colors.deepPurple.shade900
@@ -858,6 +1167,7 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                           label: const Text('Limpiar Subs (.ASS)'),
                         ),
                         const SizedBox(width: 8),
+                        // --- BOTÓN RECUPERADO ---
                         ElevatedButton.icon(
                           onPressed: () => _modificarMetadatoTitulo(true),
                           style: ElevatedButton.styleFrom(
@@ -877,17 +1187,18 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                                 : Colors.teal.shade100,
                           ),
                           icon: const Icon(Icons.sync, size: 18),
-                          label: const Text('Título = Nombre MKV'),
+                          label: const Text('Título = Nombre'),
                         ),
                         const SizedBox(width: 8),
 
-                        // HERRAMIENTAS DE RENOMBRADO
+                        // BOTONES RENOMBRADO
                         ElevatedButton(
                           onPressed: _quitarSufijoCopia,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: isDark
-                                ? Colors.red.shade900
-                                : Colors.red.shade100,
+                                ? Colors.red.shade800
+                                : Colors.red.shade200,
+                            foregroundColor: Colors.white,
                           ),
                           child: const Text('Quitar " (1)"'),
                         ),
@@ -896,8 +1207,9 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                           onPressed: () => _dialogoRenombrar(false),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: isDark
-                                ? Colors.orange.shade900
-                                : Colors.orange.shade100,
+                                ? Colors.orange.shade800
+                                : Colors.orange.shade200,
+                            foregroundColor: Colors.white,
                           ),
                           child: const Text('Renombrar (Conserva N°)'),
                         ),
@@ -906,8 +1218,9 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                           onPressed: () => _dialogoRenombrar(true),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: isDark
-                                ? Colors.green.shade900
-                                : Colors.green.shade100,
+                                ? Colors.green.shade800
+                                : Colors.green.shade200,
+                            foregroundColor: Colors.white,
                           ),
                           child: const Text('Renombrar Secuencia'),
                         ),
@@ -917,10 +1230,7 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                 ],
               ),
             ),
-
           const Divider(),
-
-          // Listas de Archivos
           Expanded(
             child: vistaActual == "archivos"
                 ? _construirListaArchivos()
@@ -939,7 +1249,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
         int profundidad = vistaActual == "agrupada"
             ? _calcularProfundidad(carpeta.rutaCompleta)
             : 0;
-
         return Container(
           margin: EdgeInsets.only(left: profundidad * 24.0),
           decoration: profundidad > 0
@@ -967,7 +1276,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                       size: 16,
                     ),
                   if (profundidad > 0) const SizedBox(width: 4),
-
                   carpeta.iconoPath != null
                       ? Image.file(
                           File(carpeta.iconoPath!),
