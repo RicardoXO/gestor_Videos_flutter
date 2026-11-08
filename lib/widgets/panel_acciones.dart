@@ -30,149 +30,165 @@ class PanelAcciones extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-      padding: const EdgeInsets.all(12.0),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.blueGrey.shade900 : Colors.blueGrey.shade50,
-        borderRadius: BorderRadius.circular(8.0),
-        border: Border.all(
-          color: isDark ? Colors.blueGrey.shade700 : Colors.blueGrey.shade300,
-          width: 1.5,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Indicador de cantidad y botón rojo para limpiar
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.blueGrey.shade800 : Colors.blueGrey.shade200,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
             children: [
               Icon(
                 Icons.check_circle,
                 color: isDark ? Colors.tealAccent : Colors.teal,
-                size: 28,
+                size: 20,
               ),
               const SizedBox(width: 8),
-              Text(
-                '$seleccionados Seleccionados',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              const Spacer(),
-              ElevatedButton.icon(
-                onPressed: onDesmarcarTodo,
-                icon: const Icon(Icons.clear_all),
-                label: const Text('Desmarcar Todo'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isDark
-                      ? Colors.red.shade900
-                      : Colors.red.shade100,
-                  foregroundColor: isDark ? Colors.white : Colors.red.shade900,
+              Expanded(
+                child: Text(
+                  '$seleccionados seleccionados',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                if (seleccionados >= 2) ...[
-                  ElevatedButton.icon(
-                    onPressed: onSeleccionarIntervalo,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isDark
-                          ? Colors.purple.shade900
-                          : Colors.purple.shade100,
-                    ),
-                    icon: const Icon(Icons.format_line_spacing, size: 18),
-                    label: const Text('Intervalo'),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                ElevatedButton.icon(
-                  onPressed: onGestionarPistas,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isDark
-                        ? Colors.pink.shade900
-                        : Colors.pink.shade100,
-                  ),
-                  icon: const Icon(Icons.layers_clear, size: 18),
-                  label: const Text('Pistas (Audio/Subs)'),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  onPressed: onLimpiarSubs,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isDark
-                        ? Colors.deepPurple.shade900
-                        : Colors.deepPurple.shade100,
-                  ),
-                  icon: const Icon(Icons.subtitles_off, size: 18),
-                  label: const Text('Limpiar Subs (.ASS)'),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  onPressed: onBorrarTitulo,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isDark
-                        ? Colors.blue.shade900
-                        : Colors.blue.shade100,
-                  ),
-                  icon: const Icon(Icons.title, size: 18),
-                  label: const Text('Borrar Título MKV'),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  onPressed: onIgualarTitulo,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isDark
-                        ? Colors.teal.shade900
-                        : Colors.teal.shade100,
-                  ),
-                  icon: const Icon(Icons.sync, size: 18),
-                  label: const Text('Título = Nombre MKV'),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: onQuitarSufijo,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isDark
-                        ? Colors.red.shade800
-                        : Colors.red.shade200,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Quitar " (1)"'),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: onDialogoRenombrar,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isDark
-                        ? Colors.orange.shade800
-                        : Colors.orange.shade200,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Renombrar (Conserva N°)'),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: onDialogoSecuencia,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isDark
-                        ? Colors.green.shade800
-                        : Colors.green.shade200,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Renombrar Secuencia'),
-                ),
-              ],
-            ),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: onDesmarcarTodo,
+          icon: const Icon(Icons.clear_all, size: 20),
+          label: const Text('Limpiar Selección'),
+          style: ElevatedButton.styleFrom(
+            alignment: Alignment.centerLeft,
+            backgroundColor: isDark ? Colors.red.shade900 : Colors.red.shade100,
+            foregroundColor: isDark ? Colors.white : Colors.red.shade900,
           ),
+        ),
+
+        const SizedBox(height: 16),
+        const Text(
+          'Operaciones Especiales',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+            color: Colors.grey,
+          ),
+        ),
+        const Divider(),
+
+        if (seleccionados >= 2) ...[
+          ElevatedButton.icon(
+            onPressed: onSeleccionarIntervalo,
+            style: ElevatedButton.styleFrom(
+              alignment: Alignment.centerLeft,
+              backgroundColor: isDark
+                  ? Colors.purple.shade900
+                  : Colors.purple.shade100,
+            ),
+            icon: const Icon(Icons.format_line_spacing, size: 18),
+            label: const Text('Rellenar Intervalo'),
+          ),
+          const SizedBox(height: 8),
         ],
-      ),
+
+        // MKVToolNix
+        ElevatedButton.icon(
+          onPressed: onGestionarPistas,
+          style: ElevatedButton.styleFrom(
+            alignment: Alignment.centerLeft,
+            backgroundColor: isDark
+                ? Colors.pink.shade900
+                : Colors.pink.shade100,
+          ),
+          icon: const Icon(Icons.layers_clear, size: 18),
+          label: const Text('Quitar Pistas (Audio/Subs)'),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: onLimpiarSubs,
+          style: ElevatedButton.styleFrom(
+            alignment: Alignment.centerLeft,
+            backgroundColor: isDark
+                ? Colors.deepPurple.shade900
+                : Colors.deepPurple.shade100,
+          ),
+          icon: const Icon(Icons.subtitles_off, size: 18),
+          label: const Text('Limpiar Subs (.ASS)'),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: onBorrarTitulo,
+          style: ElevatedButton.styleFrom(
+            alignment: Alignment.centerLeft,
+            backgroundColor: isDark
+                ? Colors.blue.shade900
+                : Colors.blue.shade100,
+          ),
+          icon: const Icon(Icons.title, size: 18),
+          label: const Text('Borrar Título MKV'),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: onIgualarTitulo,
+          style: ElevatedButton.styleFrom(
+            alignment: Alignment.centerLeft,
+            backgroundColor: isDark
+                ? Colors.teal.shade900
+                : Colors.teal.shade100,
+          ),
+          icon: const Icon(Icons.sync, size: 18),
+          label: const Text('Título = Nombre MKV'),
+        ),
+
+        const SizedBox(height: 16),
+        const Text(
+          'Renombrado Masivo',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+            color: Colors.grey,
+          ),
+        ),
+        const Divider(),
+
+        ElevatedButton(
+          onPressed: onQuitarSufijo,
+          style: ElevatedButton.styleFrom(
+            alignment: Alignment.centerLeft,
+            backgroundColor: isDark ? Colors.red.shade800 : Colors.red.shade200,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Quitar " (1)" del final'),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton(
+          onPressed: onDialogoRenombrar,
+          style: ElevatedButton.styleFrom(
+            alignment: Alignment.centerLeft,
+            backgroundColor: isDark
+                ? Colors.orange.shade800
+                : Colors.orange.shade200,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Renombrar (Conserva N°)'),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton(
+          onPressed: onDialogoSecuencia,
+          style: ElevatedButton.styleFrom(
+            alignment: Alignment.centerLeft,
+            backgroundColor: isDark
+                ? Colors.green.shade800
+                : Colors.green.shade200,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Renombrar en Secuencia'),
+        ),
+      ],
     );
   }
 }

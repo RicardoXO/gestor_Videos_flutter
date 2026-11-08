@@ -94,7 +94,7 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     setState(() => archivo.seleccionado = valor);
   }
 
-  // FIX: Se cambió iteración a todosLosArchivos para que desmarque siempre.
+  // REPARADO: Ahora itera sobre la lista global, garantizando que desmarca todos
   void _marcarTodos(bool val) {
     setState(() {
       for (var a in todosLosArchivos) {
@@ -305,39 +305,20 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
             onPressed: () =>
                 themeNotifier.value = isDark ? ThemeMode.light : ThemeMode.dark,
           ),
-          TextButton.icon(
-            onPressed: () => setState(() {
-              modoSeleccion = !modoSeleccion;
-              if (!modoSeleccion) _marcarTodos(false);
-            }),
-            icon: Icon(
-              modoSeleccion ? Icons.cancel : Icons.checklist,
-              color: iconTextColor,
-            ),
-            label: Text(
-              modoSeleccion ? "Salir de Selección" : "Activar Selección",
-              style: TextStyle(
-                color: iconTextColor,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
           const SizedBox(width: 8),
         ],
       ),
-      // NUEVO LAYOUT: Fila con Panel Lateral y Contenido Principal
       body: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // PANEL LATERAL IZQUIERDO (SIDEBAR)
+          // PANEL LATERAL IZQUIERDO CON SCROLL
           Container(
-            width: 260,
-            padding: const EdgeInsets.all(16.0),
+            width: 280,
             color: isDark
                 ? Colors.blueGrey.shade900.withOpacity(0.3)
                 : Colors.blueGrey.shade50,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: ListView(
+              padding: const EdgeInsets.all(16.0),
               children: [
                 const Text(
                   'Buscador',
@@ -440,6 +421,33 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                   label: Text(expandirTodo ? 'Contraer Todo' : 'Expandir Todo'),
                 ),
 
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    alignment: Alignment.centerLeft,
+                    backgroundColor: modoSeleccion
+                        ? (isDark
+                              ? Colors.blueGrey.shade700
+                              : Colors.blueGrey.shade300)
+                        : null,
+                    foregroundColor: modoSeleccion
+                        ? (isDark ? Colors.white : Colors.black)
+                        : null,
+                  ),
+                  onPressed: () => setState(() {
+                    modoSeleccion = !modoSeleccion;
+                    if (!modoSeleccion) _marcarTodos(false);
+                  }),
+                  icon: Icon(
+                    modoSeleccion ? Icons.cancel : Icons.checklist,
+                    size: 20,
+                  ),
+                  label: Text(
+                    modoSeleccion ? "Salir de Selección" : "Activar Selección",
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+
                 if (modoSeleccion && vistaActual == "archivos") ...[
                   const SizedBox(height: 8),
                   ElevatedButton.icon(
@@ -457,6 +465,24 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                     label: Text(
                       haySeleccion ? "Desmarcar Todos" : "Marcar Todos",
                     ),
+                  ),
+                ],
+
+                if (modoSeleccion && haySeleccion) ...[
+                  const SizedBox(height: 32),
+                  PanelAcciones(
+                    seleccionados: archivosSeleccionados.length,
+                    isDark: isDark,
+                    onDesmarcarTodo: () => _marcarTodos(false),
+                    onSeleccionarIntervalo: _seleccionarIntervalo,
+                    onGestionarPistas: _gestionarPistas,
+                    onLimpiarSubs: _limpiarSubs,
+                    onBorrarTitulo: () => _modificarTitulo(true),
+                    onIgualarTitulo: () => _modificarTitulo(false),
+                    onQuitarSufijo: () =>
+                        _ejecutarRenombrado(RenombrarService.quitarSufijoCopia),
+                    onDialogoRenombrar: () => _ejecutarRenombradoUI(false),
+                    onDialogoSecuencia: () => _ejecutarRenombradoUI(true),
                   ),
                 ],
               ],
@@ -486,22 +512,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                     ),
                   ),
                 ),
-
-                if (modoSeleccion && haySeleccion)
-                  PanelAcciones(
-                    seleccionados: archivosSeleccionados.length,
-                    isDark: isDark,
-                    onDesmarcarTodo: () => _marcarTodos(false),
-                    onSeleccionarIntervalo: _seleccionarIntervalo,
-                    onGestionarPistas: _gestionarPistas,
-                    onLimpiarSubs: _limpiarSubs,
-                    onBorrarTitulo: () => _modificarTitulo(true),
-                    onIgualarTitulo: () => _modificarTitulo(false),
-                    onQuitarSufijo: () =>
-                        _ejecutarRenombrado(RenombrarService.quitarSufijoCopia),
-                    onDialogoRenombrar: () => _ejecutarRenombradoUI(false),
-                    onDialogoSecuencia: () => _ejecutarRenombradoUI(true),
-                  ),
 
                 const Divider(),
                 Expanded(
