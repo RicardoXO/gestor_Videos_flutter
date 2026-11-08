@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'screens/gestor_principal.dart';
 
+// Variable global para el Modo Oscuro
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
+
 void main() {
   runApp(const GestorArchivosApp());
 }
@@ -10,7 +13,6 @@ class GestorArchivosApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Escucha la variable global del tema ubicada en gestor_principal.dart
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
       builder: (_, ThemeMode currentMode, __) {

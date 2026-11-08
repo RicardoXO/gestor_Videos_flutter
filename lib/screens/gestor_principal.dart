@@ -1,13 +1,15 @@
 import 'dart:io';
 import 'dart:math';
-import 'dart:convert';
 import 'package:flutter/material.dart';
-//import 'package:intl/intl.dart';
 
+import '../main.dart';
 import '../models/carpeta_modelo.dart';
 import '../models/archivo_modelo.dart';
-
-final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
+import '../services/escaner_service.dart';
+import '../services/renombrar_service.dart';
+import '../services/mkv_service.dart';
+import '../utils/dialogos_helper.dart';
+import '../widgets/panel_acciones.dart';
 
 class GestorPrincipal extends StatefulWidget {
   const GestorPrincipal({super.key});
@@ -17,12 +19,7 @@ class GestorPrincipal extends StatefulWidget {
 }
 
 class _GestorPrincipalState extends State<GestorPrincipal> {
-  // ATENCIÓN: Asegúrate de mantener la ruta a tu carpeta real
   String directorioBase = r"D:\Videos";
-
-  String rutaMkvpropedit = r"C:\Program Files\MKVToolNix\mkvpropedit.exe";
-  String rutaMkvmerge = r"C:\Program Files\MKVToolNix\mkvmerge.exe";
-  String rutaMkvextract = r"C:\Program Files\MKVToolNix\mkvextract.exe";
 
   List<CarpetaModelo> datosCarpetas = [];
   List<CarpetaModelo> carpetasFiltradas = [];
@@ -30,10 +27,8 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
   List<ArchivoModelo> archivosFiltrados = [];
 
   TextEditingController searchController = TextEditingController();
-
-  bool expandirTodo = false;
+  bool expandirTodo = false, modoSeleccion = false;
   String vistaActual = "agrupada";
-  bool modoSeleccion = false;
 
   List<ArchivoModelo> get archivosSeleccionados =>
       todosLosArchivos.where((a) => a.seleccionado).toList();
@@ -41,14 +36,22 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
   @override
   void initState() {
     super.initState();
-    _escanearDirectorio();
+    _cargarArchivos();
     searchController.addListener(_actualizarVista);
   }
 
-  void _mostrarNotificacionArriba(String mensaje, {bool esError = false}) {
+  void _cargarArchivos() {
+    var resultado = EscanerService.escanear(directorioBase);
+    setState(() {
+      datosCarpetas = resultado.carpetas;
+      todosLosArchivos = resultado.archivos;
+      _actualizarVista();
+    });
+  }
+
+  void _mostrarNotificacion(String mensaje, {bool esError = false}) {
     if (!mounted) return;
     final double alturaPantalla = MediaQuery.of(context).size.height;
-
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -73,850 +76,211 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     );
   }
 
-  void _escanearDirectorio() {
-    final dir = Directory(directorioBase);
-    if (!dir.existsSync()) return;
-
-    List<CarpetaModelo> carpetasTemp = [];
-    List<ArchivoModelo> archivosTemp = [];
-
-    const List<String> extensionesValidas = ['mp4', 'mov', 'mkv', 'avi', 'ico'];
-    List<FileSystemEntity> entidades = dir.listSync(recursive: true);
-    Map<String, List<ArchivoModelo>> agrupacion = {};
-
-    for (var entidad in entidades) {
-      if (entidad is File) {
-        String nombre = entidad.path.split(Platform.pathSeparator).last;
-        String ext = nombre.contains('.')
-            ? nombre.split('.').last.toLowerCase()
-            : '';
-
-        if (!extensionesValidas.contains(ext)) continue;
-
-        String parentPath = entidad.parent.path;
-        int tamano = entidad.lengthSync();
-
-        ArchivoModelo archivo = ArchivoModelo(
-          nombre: nombre,
-          rutaCompleta: entidad.path,
-          tamanoBytes: tamano,
-          tipo: ext,
-        );
-
-        archivosTemp.add(archivo);
-
-        if (!agrupacion.containsKey(parentPath)) {
-          agrupacion[parentPath] = [];
-        }
-        agrupacion[parentPath]!.add(archivo);
-      }
-    }
-
-    agrupacion.forEach((ruta, archivos) {
-      int tamanoTotal = archivos.fold(0, (sum, a) => sum + a.tamanoBytes);
-      String? icono;
-      try {
-        icono = archivos.firstWhere((a) => a.tipo == 'ico').rutaCompleta;
-      } catch (e) {
-        icono = null;
-      }
-
-      carpetasTemp.add(
-        CarpetaModelo(
-          rutaCompleta: ruta,
-          nombre: ruta == directorioBase
-              ? "RAIZ"
-              : ruta.split(Platform.pathSeparator).last,
-          tamanoBytes: tamanoTotal,
-          archivos: archivos,
-          iconoPath: icono,
-        ),
-      );
-    });
-
-    datosCarpetas = carpetasTemp;
-    todosLosArchivos = archivosTemp;
-    _actualizarVista();
-  }
-
-  int _calcularProfundidad(String ruta) {
-    if (ruta.length <= directorioBase.length) return 0;
-    String relativa = ruta.substring(directorioBase.length);
-    if (relativa.startsWith(Platform.pathSeparator))
-      relativa = relativa.substring(1);
-    return relativa.isEmpty ? 0 : relativa.split(Platform.pathSeparator).length;
-  }
-
+  // --- CONTROL DE UI ---
   void _manejarSeleccion(ArchivoModelo archivo, bool valor) {
-    if (valor && vistaActual != "archivos") {
-      String nuevaRutaPadre = File(archivo.rutaCompleta).parent.path;
-      if (archivosSeleccionados.isNotEmpty) {
-        String rutaPadreActual = File(
-          archivosSeleccionados.first.rutaCompleta,
-        ).parent.path;
-        if (rutaPadreActual != nuevaRutaPadre) {
-          for (var a in archivosSeleccionados) a.seleccionado = false;
-          _mostrarNotificacionArriba(
-            'Se desmarcaron los archivos de la otra carpeta para evitar conflictos.',
-            esError: true,
-          );
+    if (valor &&
+        vistaActual != "archivos" &&
+        archivosSeleccionados.isNotEmpty) {
+      if (File(archivosSeleccionados.first.rutaCompleta).parent.path !=
+          File(archivo.rutaCompleta).parent.path) {
+        for (var a in archivosSeleccionados) {
+          a.seleccionado = false;
         }
+        _mostrarNotificacion(
+          'Se desmarcaron archivos de otra carpeta para evitar conflictos.',
+          esError: true,
+        );
       }
     }
     setState(() => archivo.seleccionado = valor);
   }
 
+  void _marcarTodos(bool val) => setState(() {
+    for (var a in archivosFiltrados) {
+      a.seleccionado = val;
+    }
+  });
+
   void _seleccionarIntervalo() {
     if (archivosSeleccionados.length < 2) return;
     setState(() {
-      if (vistaActual == "archivos") {
-        List<int> indices = [];
-        for (int i = 0; i < archivosFiltrados.length; i++) {
-          if (archivosFiltrados[i].seleccionado) indices.add(i);
-        }
-        if (indices.isNotEmpty) {
-          int minIdx = indices.reduce(min);
-          int maxIdx = indices.reduce(max);
-          for (int i = minIdx; i <= maxIdx; i++)
-            archivosFiltrados[i].seleccionado = true;
-        }
-      } else {
-        String rutaPadre = File(
-          archivosSeleccionados.first.rutaCompleta,
-        ).parent.path;
-        CarpetaModelo? carpetaActiva;
-        try {
-          carpetaActiva = carpetasFiltradas.firstWhere(
-            (c) => c.rutaCompleta == rutaPadre,
-          );
-        } catch (e) {
-          carpetaActiva = null;
-        }
+      List<ArchivoModelo> listaBase = vistaActual == "archivos"
+          ? archivosFiltrados
+          : carpetasFiltradas
+                .firstWhere(
+                  (c) =>
+                      c.rutaCompleta ==
+                      File(
+                        archivosSeleccionados.first.rutaCompleta,
+                      ).parent.path,
+                )
+                .archivos;
 
-        if (carpetaActiva != null) {
-          List<int> indices = [];
-          for (int i = 0; i < carpetaActiva.archivos.length; i++) {
-            if (carpetaActiva.archivos[i].seleccionado) indices.add(i);
-          }
-          if (indices.isNotEmpty) {
-            int minIdx = indices.reduce(min);
-            int maxIdx = indices.reduce(max);
-            for (int i = minIdx; i <= maxIdx; i++)
-              carpetaActiva.archivos[i].seleccionado = true;
-          }
+      List<int> indices = [];
+      for (int i = 0; i < listaBase.length; i++) {
+        if (listaBase[i].seleccionado) indices.add(i);
+      }
+      if (indices.isNotEmpty) {
+        for (int i = indices.reduce(min); i <= indices.reduce(max); i++) {
+          listaBase[i].seleccionado = true;
         }
       }
-    });
-  }
-
-  void _alternarModoSeleccion() {
-    setState(() {
-      modoSeleccion = !modoSeleccion;
-      if (!modoSeleccion)
-        for (var a in todosLosArchivos) a.seleccionado = false;
-    });
-  }
-
-  void _marcarTodos(bool seleccionar) {
-    setState(() {
-      for (var archivo in archivosFiltrados) archivo.seleccionado = seleccionar;
     });
   }
 
   void _actualizarVista() {
-    if (vistaActual == "agrupada")
-      _vistaAgrupadaNormal();
-    else if (vistaActual == "ordenada")
-      _vistaOrdenadaNombre();
-    else if (vistaActual == "archivos")
-      _vistaArchivosPorTamano();
-  }
-
-  void _aplicarFiltroCarpetas(List<CarpetaModelo> base) {
-    String query = searchController.text.toLowerCase();
-    if (query.isEmpty) {
-      setState(() => carpetasFiltradas = List.from(base));
-      return;
-    }
-
-    List<CarpetaModelo> filtrado = [];
-    for (var carpeta in base) {
-      bool coincideCarpeta = carpeta.nombre.toLowerCase().contains(query);
-      List<ArchivoModelo> archivosCoincidentes = carpeta.archivos
-          .where((a) => a.nombre.toLowerCase().contains(query))
-          .toList();
-      if (coincideCarpeta) {
-        filtrado.add(carpeta);
-      } else if (archivosCoincidentes.isNotEmpty) {
-        filtrado.add(
-          CarpetaModelo(
-            rutaCompleta: carpeta.rutaCompleta,
-            nombre: carpeta.nombre,
-            tamanoBytes: carpeta.tamanoBytes,
-            archivos: archivosCoincidentes,
-          ),
-        );
-      }
-    }
+    String q = searchController.text.toLowerCase();
     setState(() {
-      carpetasFiltradas = filtrado;
-      expandirTodo = true;
-    });
-  }
-
-  void _vistaAgrupadaNormal() {
-    vistaActual = "agrupada";
-    List<CarpetaModelo> ordenados = List.from(datosCarpetas);
-    ordenados.sort((a, b) => a.rutaCompleta.compareTo(b.rutaCompleta));
-    _aplicarFiltroCarpetas(ordenados);
-  }
-
-  void _vistaOrdenadaNombre() {
-    vistaActual = "ordenada";
-    List<CarpetaModelo> ordenados = List.from(datosCarpetas);
-    ordenados.sort(
-      (a, b) => a.nombre.toLowerCase().compareTo(b.nombre.toLowerCase()),
-    );
-    _aplicarFiltroCarpetas(ordenados);
-  }
-
-  void _vistaArchivosPorTamano() {
-    vistaActual = "archivos";
-    String query = searchController.text.toLowerCase();
-    List<ArchivoModelo> filtrados = query.isEmpty
-        ? List.from(todosLosArchivos)
-        : todosLosArchivos
-              .where((a) => a.nombre.toLowerCase().contains(query))
-              .toList();
-    filtrados.sort((a, b) => b.tamanoBytes.compareTo(a.tamanoBytes));
-    setState(() => archivosFiltrados = filtrados);
-  }
-
-  // --- RENOMBRADO ---
-  void _procesarRenombrado(Function(ArchivoModelo, String, String) logica) {
-    try {
-      int renombrados = 0;
-      for (var archivo in archivosSeleccionados) {
-        int lastDot = archivo.nombre.lastIndexOf('.');
-        String nombreBase = lastDot != -1
-            ? archivo.nombre.substring(0, lastDot)
-            : archivo.nombre;
-        String ext = lastDot != -1 ? archivo.nombre.substring(lastDot) : '';
-        String nuevoNombre = logica(archivo, nombreBase, ext);
-        if (nuevoNombre != archivo.nombre && nuevoNombre.isNotEmpty) {
-          String nuevaRuta =
-              "${File(archivo.rutaCompleta).parent.path}${Platform.pathSeparator}$nuevoNombre";
-          File(archivo.rutaCompleta).renameSync(nuevaRuta);
-          renombrados++;
-        }
-      }
-      _escanearDirectorio();
-      _mostrarNotificacionArriba(
-        'Éxito: $renombrados archivos han sido renombrados.',
-      );
-    } catch (e) {
-      _mostrarNotificacionArriba('Error al renombrar: $e', esError: true);
-    }
-  }
-
-  void _quitarSufijoCopia() {
-    _procesarRenombrado((archivo, nombreBase, ext) {
-      return "${nombreBase.replaceAll(RegExp(r'\s\(\d+\)$'), '')}$ext";
-    });
-  }
-
-  void _renombrarMantieneNumero(String nombreDeseado) {
-    _procesarRenombrado((archivo, nombreBase, ext) {
-      Match? match = RegExp(r'(\d+)$').firstMatch(nombreBase.trim());
-      if (match != null) return "$nombreDeseado ${match.group(1)!}$ext";
-      return "";
-    });
-  }
-
-  void _renombrarSecuencial(String nombreDeseado, String inicioStr) {
-    int length = inicioStr.length;
-    int contador = int.tryParse(inicioStr) ?? 1;
-    _procesarRenombrado((archivo, nombreBase, ext) {
-      String numeroStr = contador.toString().padLeft(length, '0');
-      contador++;
-      return "$nombreDeseado $numeroStr$ext";
-    });
-  }
-
-  // --- MKVTOOLNIX: METADATOS TÍTULO ---
-  Future<void> _modificarMetadatoTitulo(bool limpiar) async {
-    if (!File(rutaMkvpropedit).existsSync()) {
-      _mostrarNotificacionArriba(
-        'Error: mkvpropedit.exe no encontrado.',
-        esError: true,
-      );
-      return;
-    }
-    int procesados = 0;
-    for (var archivo in archivosSeleccionados) {
-      if (archivo.tipo != 'mkv') continue;
-      List<String> args = [archivo.rutaCompleta];
-      if (limpiar) {
-        args.addAll(['--delete', 'title']);
+      if (vistaActual == "archivos") {
+        archivosFiltrados = List.from(todosLosArchivos)
+          ..retainWhere((a) => a.nombre.toLowerCase().contains(q))
+          ..sort((a, b) => b.tamanoBytes.compareTo(a.tamanoBytes));
       } else {
-        String nombreBase = archivo.nombre.substring(
-          0,
-          archivo.nombre.lastIndexOf('.'),
-        );
-        args.addAll(['--edit', 'info', '--set', 'title=$nombreBase']);
-      }
-      var result = await Process.run(rutaMkvpropedit, args);
-      if (result.exitCode == 0 || result.exitCode == 1) procesados++;
-    }
-    _mostrarNotificacionArriba(
-      'Metadatos Título MKV actualizados en $procesados archivos.',
-    );
-  }
-
-  // --- MKVTOOLNIX: GESTION DE PISTAS (ELIMINAR AUDIO/SUBS) ---
-  Future<void> _dialogoGestionarPistas() async {
-    if (!File(rutaMkvmerge).existsSync()) {
-      _mostrarNotificacionArriba(
-        'Error: mkvmerge.exe no encontrado.',
-        esError: true,
-      );
-      return;
-    }
-
-    // Usamos el primer archivo MKV como base para leer la estructura de pistas
-    ArchivoModelo? archivoBase;
-    try {
-      archivoBase = archivosSeleccionados.firstWhere((a) => a.tipo == 'mkv');
-    } catch (e) {
-      _mostrarNotificacionArriba(
-        'Debes seleccionar al menos un archivo MKV.',
-        esError: true,
-      );
-      return;
-    }
-
-    var resultJ = await Process.run(rutaMkvmerge, [
-      '-J',
-      archivoBase.rutaCompleta,
-    ]);
-    if (resultJ.exitCode != 0) {
-      _mostrarNotificacionArriba(
-        'No se pudo analizar el archivo MKV seleccionado.',
-        esError: true,
-      );
-      return;
-    }
-
-    var info = jsonDecode(resultJ.stdout);
-    List pistasAudio = [];
-    List pistasSubs = [];
-
-    for (var track in info['tracks']) {
-      if (track['type'] == 'audio') pistasAudio.add(track);
-      if (track['type'] == 'subtitles') pistasSubs.add(track);
-    }
-
-    // Mostrar Diálogo con casillas para eliminar pistas
-    List<int> tracksAEliminarAudio = [];
-    List<int> tracksAEliminarSubs = [];
-
-    bool? proceder = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setStateSB) {
-            return AlertDialog(
-              title: const Text('Eliminar Pistas (Audio / Subs)'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (archivosSeleccionados
-                              .where((a) => a.tipo == 'mkv')
-                              .length >
-                          1)
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          color: Colors.orange.withOpacity(0.2),
-                          child: const Text(
-                            '⚠️ Se aplicará a múltiples videos. Se asume que todos tienen exactamente este mismo orden de pistas.',
-                            style: TextStyle(color: Colors.orange),
-                          ),
-                        ),
-                      const SizedBox(height: 10),
-
-                      const Text(
-                        'PISTAS DE AUDIO',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const Divider(),
-                      if (pistasAudio.isEmpty)
-                        const Text('No hay pistas de audio.'),
-                      ...pistasAudio.map((t) {
-                        bool eliminar = tracksAEliminarAudio.contains(t['id']);
-                        String lang = t['properties']?['language'] ?? 'und';
-                        String name =
-                            t['properties']?['track_name'] ?? 'Sin título';
-                        return CheckboxListTile(
-                          value: eliminar,
-                          activeColor: Colors.red.shade700,
-                          title: Text(
-                            'ID ${t['id']} [$lang] - $name',
-                            style: TextStyle(
-                              decoration: eliminar
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                            ),
-                          ),
-                          subtitle: Text(
-                            'Eliminar pista',
-                            style: TextStyle(
-                              color: eliminar ? Colors.red : null,
-                            ),
-                          ),
-                          secondary: const Icon(Icons.audiotrack),
-                          onChanged: (val) {
-                            setStateSB(() {
-                              if (val == true)
-                                tracksAEliminarAudio.add(t['id']);
-                              else
-                                tracksAEliminarAudio.remove(t['id']);
-                            });
-                          },
-                        );
-                      }),
-
-                      const SizedBox(height: 20),
-                      const Text(
-                        'SUBTÍTULOS',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const Divider(),
-                      if (pistasSubs.isEmpty)
-                        const Text('No hay pistas de subtítulos.'),
-                      ...pistasSubs.map((t) {
-                        bool eliminar = tracksAEliminarSubs.contains(t['id']);
-                        String lang = t['properties']?['language'] ?? 'und';
-                        String name =
-                            t['properties']?['track_name'] ?? 'Sin título';
-                        return CheckboxListTile(
-                          value: eliminar,
-                          activeColor: Colors.red.shade700,
-                          title: Text(
-                            'ID ${t['id']} [$lang] - $name',
-                            style: TextStyle(
-                              decoration: eliminar
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                            ),
-                          ),
-                          subtitle: Text(
-                            'Eliminar pista',
-                            style: TextStyle(
-                              color: eliminar ? Colors.red : null,
-                            ),
-                          ),
-                          secondary: const Icon(Icons.subtitles),
-                          onChanged: (val) {
-                            setStateSB(() {
-                              if (val == true)
-                                tracksAEliminarSubs.add(t['id']);
-                              else
-                                tracksAEliminarSubs.remove(t['id']);
-                            });
-                          },
-                        );
-                      }),
-                    ],
-                  ),
+        List<CarpetaModelo> base = List.from(datosCarpetas)
+          ..sort(
+            (a, b) => vistaActual == "agrupada"
+                ? a.rutaCompleta.compareTo(b.rutaCompleta)
+                : a.nombre.toLowerCase().compareTo(b.nombre.toLowerCase()),
+          );
+        if (q.isEmpty) {
+          carpetasFiltradas = base;
+        } else {
+          carpetasFiltradas = [];
+          for (var c in base) {
+            bool cCoin = c.nombre.toLowerCase().contains(q);
+            var aCoin = c.archivos
+                .where((a) => a.nombre.toLowerCase().contains(q))
+                .toList();
+            if (cCoin) {
+              carpetasFiltradas.add(c);
+            } else if (aCoin.isNotEmpty) {
+              carpetasFiltradas.add(
+                CarpetaModelo(
+                  rutaCompleta: c.rutaCompleta,
+                  nombre: c.nombre,
+                  tamanoBytes: c.tamanoBytes,
+                  archivos: aCoin,
+                  iconoPath: c.iconoPath,
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancelar'),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red.shade800,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed:
-                      (tracksAEliminarAudio.isEmpty &&
-                          tracksAEliminarSubs.isEmpty)
-                      ? null
-                      : () => Navigator.pop(context, true),
-                  child: const Text('Eliminar Pistas Seleccionadas'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (proceder != true) return;
-
-    _mostrarNotificacionArriba(
-      'Remuxing archivos, esto tomará unos segundos...',
-    );
-    int procesados = 0;
-
-    for (var archivo in archivosSeleccionados.where((a) => a.tipo == 'mkv')) {
-      String rutaNueva = archivo.rutaCompleta.replaceAll('.mkv', '_TEMP.mkv');
-      List<String> argsMerge = ['-o', rutaNueva];
-
-      if (tracksAEliminarAudio.isNotEmpty) {
-        argsMerge.addAll([
-          '--audio-tracks',
-          '!${tracksAEliminarAudio.join(',')}',
-        ]);
-      }
-      if (tracksAEliminarSubs.isNotEmpty) {
-        argsMerge.addAll([
-          '--subtitle-tracks',
-          '!${tracksAEliminarSubs.join(',')}',
-        ]);
-      }
-      argsMerge.add(archivo.rutaCompleta);
-
-      var mergeResult = await Process.run(rutaMkvmerge, argsMerge);
-      if (mergeResult.exitCode == 0 || mergeResult.exitCode == 1) {
-        File(archivo.rutaCompleta).deleteSync();
-        File(rutaNueva).renameSync(archivo.rutaCompleta);
-        procesados++;
-      } else {
-        if (File(rutaNueva).existsSync()) File(rutaNueva).deleteSync();
-      }
-    }
-    _escanearDirectorio();
-    _mostrarNotificacionArriba(
-      'Se eliminaron pistas de $procesados videos correctamente.',
-    );
-  }
-
-  // --- MKVTOOLNIX: LIMPIEZA DE SUBTÍTULOS (.ASS) ---
-  Future<String?> _mostrarDialogoConfirmacionSubs(
-    String nombreArchivo,
-    List<String> lineas,
-  ) {
-    return showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Limpieza en: $nombreArchivo',
-          style: const TextStyle(fontSize: 16),
-        ),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Se encontraron ${lineas.length} líneas basura:',
-                style: const TextStyle(color: Colors.orange),
-              ),
-              const SizedBox(height: 10),
-              Container(
-                constraints: const BoxConstraints(maxHeight: 250),
-                padding: const EdgeInsets.all(8),
-                color: Colors.black12,
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: lineas.length,
-                  itemBuilder: (c, i) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4.0),
-                    child: Text(
-                      lineas[i],
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                '¿Qué deseas hacer?',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, 'cancelar'),
-            child: const Text(
-              'Cancelar Proceso',
-              style: TextStyle(color: Colors.red),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, 'omitir'),
-            child: const Text('Omitir este video'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, 'eliminar'),
-            child: const Text('Eliminar líneas'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green.shade800,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.pop(context, 'todos'),
-            child: const Text('Eliminar y Aplicar a Todos'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _procesarLimpiezaSubtitulos(String textoBuscado) async {
-    if (!File(rutaMkvmerge).existsSync() ||
-        !File(rutaMkvextract).existsSync()) {
-      _mostrarNotificacionArriba(
-        'Error: mkvmerge o mkvextract no encontrados.',
-        esError: true,
-      );
-      return;
-    }
-
-    _mostrarNotificacionArriba(
-      'Extrayendo y analizando subtítulos, por favor espera...',
-    );
-
-    int procesados = 0;
-    int omitidos = 0;
-    int lineasBorradasTotales = 0;
-    bool aplicarATodos = false;
-    bool cancelarProceso = false;
-
-    for (var archivo in archivosSeleccionados) {
-      if (cancelarProceso) break;
-      if (archivo.tipo != 'mkv') continue;
-
-      var resultJ = await Process.run(rutaMkvmerge, [
-        '-J',
-        archivo.rutaCompleta,
-      ]);
-      if (resultJ.exitCode != 0) continue;
-
-      var info = jsonDecode(resultJ.stdout);
-      List<int> tracksAss = [];
-      for (var track in info['tracks']) {
-        if (track['type'] == 'subtitles' &&
-            (track['codec'].toString().contains('SubStationAlpha') ||
-                track['codec'].toString().contains('ASS'))) {
-          tracksAss.add(track['id']);
-        }
-      }
-
-      if (tracksAss.isEmpty) continue;
-
-      String tempDir = Directory.systemTemp.path;
-      List<String> nuevosAss = [];
-      List<String> argsExtract = ['tracks', archivo.rutaCompleta];
-
-      for (int id in tracksAss) {
-        String pathAss =
-            '$tempDir\\sub_${id}_${DateTime.now().millisecondsSinceEpoch}.ass';
-        argsExtract.add('$id:$pathAss');
-        nuevosAss.add(pathAss);
-      }
-      await Process.run(rutaMkvextract, argsExtract);
-
-      List<String> todasLasLineasBorradas = [];
-      bool tieneCambios = false;
-
-      for (String pathAss in nuevosAss) {
-        File fileAss = File(pathAss);
-        if (await fileAss.exists()) {
-          List<String> lineas = await fileAss.readAsLines();
-          List<String> limpias = [];
-          for (var linea in lineas) {
-            if (linea.toLowerCase().contains(textoBuscado.toLowerCase())) {
-              todasLasLineasBorradas.add(linea);
-              tieneCambios = true;
-            } else {
-              limpias.add(linea);
+              );
             }
           }
-          await fileAss.writeAsString(limpias.join('\n'));
+          expandirTodo = true;
         }
       }
+    });
+  }
 
-      // Si no hubo lineas encontradas, omite este video y no hace re-empaquetado.
-      if (!tieneCambios) {
-        for (String pathAss in nuevosAss)
-          if (File(pathAss).existsSync()) File(pathAss).deleteSync();
-        omitidos++;
-        continue;
-      }
-
-      // DIÁLOGO DE CONFIRMACIÓN
-      if (!aplicarATodos) {
-        String? accion = await _mostrarDialogoConfirmacionSubs(
-          archivo.nombre,
-          todasLasLineasBorradas,
-        );
-        if (accion == 'cancelar') {
-          cancelarProceso = true;
-          for (String pathAss in nuevosAss)
-            if (File(pathAss).existsSync()) File(pathAss).deleteSync();
-          break;
-        }
-        if (accion == 'omitir') {
-          omitidos++;
-          for (String pathAss in nuevosAss)
-            if (File(pathAss).existsSync()) File(pathAss).deleteSync();
-          continue;
-        }
-        if (accion == 'todos') {
-          aplicarATodos = true;
-        }
-        // Si es 'eliminar', continua el flujo normal.
-      }
-
-      // RE-EMPAQUETADO
-      lineasBorradasTotales += todasLasLineasBorradas.length;
-      String rutaNueva = archivo.rutaCompleta.replaceAll('.mkv', '_TEMP.mkv');
-      List<String> argsMerge = ['-o', rutaNueva];
-      argsMerge.addAll(['--subtitle-tracks', '!${tracksAss.join(',')}']);
-      argsMerge.add(archivo.rutaCompleta);
-      argsMerge.addAll(nuevosAss);
-
-      var mergeResult = await Process.run(rutaMkvmerge, argsMerge);
-
-      if (mergeResult.exitCode == 0 || mergeResult.exitCode == 1) {
-        File(archivo.rutaCompleta).deleteSync();
-        File(rutaNueva).renameSync(archivo.rutaCompleta);
-        procesados++;
-      }
-
-      for (String pathAss in nuevosAss)
-        if (File(pathAss).existsSync()) File(pathAss).deleteSync();
+  // --- LLAMADAS A SERVICIOS ---
+  void _ejecutarRenombrado(int Function(List<ArchivoModelo>) accion) {
+    try {
+      int procesados = accion(archivosSeleccionados);
+      _cargarArchivos();
+      _mostrarNotificacion('Éxito: $procesados archivos renombrados.');
+    } catch (e) {
+      _mostrarNotificacion('Error: $e', esError: true);
     }
+  }
 
-    _escanearDirectorio();
-    if (mounted) {
-      _mostrarNotificacionArriba(
-        'Proceso terminado: $procesados editados, $omitidos sin cambios/omitidos. Se borraron $lineasBorradasTotales líneas basura.',
+  void _ejecutarRenombradoUI(bool secuencial) {
+    DialogosHelper.mostrarDialogoRenombrar(context, secuencial, (
+      nombre,
+      inicio,
+    ) {
+      _ejecutarRenombrado(
+        (lista) => secuencial
+            ? RenombrarService.renombrarSecuencial(lista, nombre, inicio)
+            : RenombrarService.renombrarMantieneNumero(lista, nombre),
+      );
+    });
+  }
+
+  void _modificarTitulo(bool limpiar) async {
+    if (!MkvService.verificarHerramientas()) {
+      return _mostrarNotificacion(
+        'Error: Herramientas MKV no encontradas.',
+        esError: true,
       );
     }
-  }
-
-  void _dialogoLimpiarSubtitulosUI() {
-    TextEditingController textoCtrl = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Limpiar Subtítulos (.ASS)'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Se buscará el siguiente texto en los subtítulos de los MKV:',
-              style: TextStyle(fontSize: 13),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: textoCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Texto o Link a borrar',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (textoCtrl.text.trim().isEmpty) return;
-              Navigator.pop(context);
-              _procesarLimpiezaSubtitulos(textoCtrl.text.trim());
-            },
-            child: const Text('Comenzar Búsqueda'),
-          ),
-        ],
-      ),
+    int p = await MkvService.modificarMetadatoTitulo(
+      archivosSeleccionados,
+      limpiar,
     );
+    if (mounted) _mostrarNotificacion('Títulos actualizados en $p archivos.');
   }
 
-  // --- INTERFAZ ---
-  void _dialogoRenombrar(bool secuencial) {
-    TextEditingController nombreCtrl = TextEditingController();
-    TextEditingController numCtrl = TextEditingController(text: "01");
+  void _limpiarSubs() {
+    DialogosHelper.mostrarDialogoLimpiarSubtitulos(context, (texto) async {
+      if (!MkvService.verificarHerramientas())
+        return _mostrarNotificacion(
+          'Error en herramientas MKV.',
+          esError: true,
+        );
+      _mostrarNotificacion('Procesando limpieza, espera...');
+      var res = await MkvService.procesarLimpiezaSubtitulos(
+        archivos: archivosSeleccionados,
+        textoBuscado: texto,
+        onConfirmar: (n, ls) =>
+            DialogosHelper.mostrarConfirmacionSubs(context, n, ls),
+      );
+      _cargarArchivos();
+      if (mounted)
+        _mostrarNotificacion(
+          'Terminado: ${res['procesados']} procesados, ${res['omitidos']} omitidos. ${res['lineas']} líneas borradas.',
+        );
+    });
+  }
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          secuencial ? 'Renombrar en Secuencia' : 'Renombrar (Mantiene Número)',
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nombreCtrl,
-              decoration: const InputDecoration(labelText: 'Nuevo nombre base'),
-            ),
-            if (secuencial) ...[
-              const SizedBox(height: 10),
-              TextField(
-                controller: numCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Número de inicio (ej. 1, 01)',
-                  hintText: '01',
-                ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (nombreCtrl.text.trim().isEmpty) return;
-              Navigator.pop(context);
-              if (secuencial)
-                _renombrarSecuencial(
-                  nombreCtrl.text.trim(),
-                  numCtrl.text.trim(),
-                );
-              else
-                _renombrarMantieneNumero(nombreCtrl.text.trim());
-            },
-            child: const Text('Aplicar'),
-          ),
-        ],
-      ),
+  void _gestionarPistas() async {
+    if (!MkvService.verificarHerramientas())
+      return _mostrarNotificacion('Error en herramientas MKV.', esError: true);
+    var base = archivosSeleccionados.firstWhere((a) => a.tipo == 'mkv');
+    var info = await MkvService.obtenerPistas(base.rutaCompleta);
+    if (info == null)
+      return _mostrarNotificacion('Error analizando MKV.', esError: true);
+
+    List<dynamic> audios = [], subs = [];
+    for (var track in info['tracks']) {
+      if (track['type'] == 'audio') audios.add(track);
+      if (track['type'] == 'subtitles') subs.add(track);
+    }
+
+    List<int> delAudio = [], delSubs = [];
+    bool? proceder = await DialogosHelper.mostrarDialogoGestionarPistas(
+      context,
+      audios,
+      subs,
+      delAudio,
+      delSubs,
+      archivosSeleccionados.length > 1,
     );
+
+    if (proceder == true) {
+      _mostrarNotificacion('Remuxing, tomará unos segundos...');
+      int p = await MkvService.eliminarPistas(
+        archivosSeleccionados,
+        delAudio,
+        delSubs,
+      );
+      _cargarArchivos();
+      if (mounted) _mostrarNotificacion('Pistas eliminadas de $p videos.');
+    }
   }
 
-  String _formatearTamano(int bytes) {
-    if (bytes < 1024) return "$bytes B";
-    if (bytes < 1048576) return "${(bytes / 1024).toStringAsFixed(2)} KB";
-    if (bytes < 1073741824) return "${(bytes / 1048576).toStringAsFixed(2)} MB";
-    return "${(bytes / 1073741824).toStringAsFixed(2)} GB";
-  }
+  String _formato(int b) => b < 1024
+      ? "$b B"
+      : b < 1048576
+      ? "${(b / 1024).toStringAsFixed(2)} KB"
+      : b < 1073741824
+      ? "${(b / 1048576).toStringAsFixed(2)} MB"
+      : "${(b / 1073741824).toStringAsFixed(2)} GB";
+  int _prof(String r) => r.length <= directorioBase.length
+      ? 0
+      : r
+            .substring(directorioBase.length)
+            .replaceAll(RegExp('^\\\\'), '')
+            .split(Platform.pathSeparator)
+            .length;
 
   @override
   Widget build(BuildContext context) {
@@ -934,12 +298,14 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
               isDark ? Icons.light_mode : Icons.dark_mode,
               color: iconTextColor,
             ),
-            tooltip: 'Alternar Tema',
             onPressed: () =>
                 themeNotifier.value = isDark ? ThemeMode.light : ThemeMode.dark,
           ),
           TextButton.icon(
-            onPressed: _alternarModoSeleccion,
+            onPressed: () => setState(() {
+              modoSeleccion = !modoSeleccion;
+              if (!modoSeleccion) _marcarTodos(false);
+            }),
             icon: Icon(
               modoSeleccion ? Icons.cancel : Icons.checklist,
               color: iconTextColor,
@@ -1020,9 +386,12 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                         ? (isDark ? Colors.blue.shade900 : Colors.blue.shade100)
                         : null,
                   ),
-                  onPressed: () => setState(() => _vistaAgrupadaNormal()),
+                  onPressed: () => setState(() {
+                    vistaActual = "agrupada";
+                    _actualizarVista();
+                  }),
                   icon: const Icon(Icons.folder_copy),
-                  label: const Text('Agrupar por Jerarquía'),
+                  label: const Text('Jerarquía'),
                 ),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
@@ -1032,9 +401,12 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                               : Colors.yellow.shade100)
                         : null,
                   ),
-                  onPressed: () => setState(() => _vistaOrdenadaNombre()),
+                  onPressed: () => setState(() {
+                    vistaActual = "ordenada";
+                    _actualizarVista();
+                  }),
                   icon: const Icon(Icons.sort_by_alpha),
-                  label: const Text('Carpetas por Nombre'),
+                  label: const Text('Nombres'),
                 ),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
@@ -1044,9 +416,12 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                               : Colors.deepOrange.shade100)
                         : null,
                   ),
-                  onPressed: () => setState(() => _vistaArchivosPorTamano()),
+                  onPressed: () => setState(() {
+                    vistaActual = "archivos";
+                    _actualizarVista();
+                  }),
                   icon: const Icon(Icons.balance),
-                  label: const Text('Lista Plana por Tamaño'),
+                  label: const Text('Lista Plana'),
                 ),
                 if (modoSeleccion && vistaActual == "archivos")
                   ElevatedButton.icon(
@@ -1067,297 +442,146 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
             ),
           ),
 
-          // PANEL SUPERIOR DE HERRAMIENTAS
           if (modoSeleccion && haySeleccion)
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.symmetric(
-                horizontal: 12.0,
-                vertical: 8.0,
-              ),
-              padding: const EdgeInsets.all(12.0),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.blueGrey.shade900
-                    : Colors.blueGrey.shade50,
-                borderRadius: BorderRadius.circular(8.0),
-                border: Border.all(
-                  color: isDark
-                      ? Colors.blueGrey.shade700
-                      : Colors.blueGrey.shade300,
-                  width: 1.5,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.check_circle,
-                        color: isDark ? Colors.tealAccent : Colors.teal,
-                        size: 28,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${archivosSeleccionados.length} Seleccionados',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const Spacer(),
-                      ElevatedButton.icon(
-                        onPressed: () => _marcarTodos(false),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isDark
-                              ? Colors.red.shade900
-                              : Colors.red.shade100,
-                          foregroundColor: isDark
-                              ? Colors.white
-                              : Colors.red.shade900,
-                        ),
-                        icon: const Icon(Icons.clear_all),
-                        label: const Text('Desmarcar Todo'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        if (archivosSeleccionados.length >= 2) ...[
-                          ElevatedButton.icon(
-                            onPressed: _seleccionarIntervalo,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: isDark
-                                  ? Colors.purple.shade900
-                                  : Colors.purple.shade100,
-                            ),
-                            icon: const Icon(
-                              Icons.format_line_spacing,
-                              size: 18,
-                            ),
-                            label: const Text('Seleccionar Intervalo'),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-
-                        // BOTONES MKVTOOLNIX
-                        ElevatedButton.icon(
-                          onPressed: _dialogoGestionarPistas,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isDark
-                                ? Colors.pink.shade900
-                                : Colors.pink.shade100,
-                          ),
-                          icon: const Icon(Icons.layers_clear, size: 18),
-                          label: const Text('Eliminar Pistas (Audio/Subs)'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton.icon(
-                          onPressed: _dialogoLimpiarSubtitulosUI,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isDark
-                                ? Colors.deepPurple.shade900
-                                : Colors.deepPurple.shade100,
-                          ),
-                          icon: const Icon(Icons.subtitles_off, size: 18),
-                          label: const Text('Limpiar Subs (.ASS)'),
-                        ),
-                        const SizedBox(width: 8),
-                        // --- BOTÓN RECUPERADO ---
-                        ElevatedButton.icon(
-                          onPressed: () => _modificarMetadatoTitulo(true),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isDark
-                                ? Colors.blue.shade900
-                                : Colors.blue.shade100,
-                          ),
-                          icon: const Icon(Icons.title, size: 18),
-                          label: const Text('Borrar Título MKV'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton.icon(
-                          onPressed: () => _modificarMetadatoTitulo(false),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isDark
-                                ? Colors.teal.shade900
-                                : Colors.teal.shade100,
-                          ),
-                          icon: const Icon(Icons.sync, size: 18),
-                          label: const Text('Título = Nombre'),
-                        ),
-                        const SizedBox(width: 8),
-
-                        // BOTONES RENOMBRADO
-                        ElevatedButton(
-                          onPressed: _quitarSufijoCopia,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isDark
-                                ? Colors.red.shade800
-                                : Colors.red.shade200,
-                            foregroundColor: Colors.white,
-                          ),
-                          child: const Text('Quitar " (1)"'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () => _dialogoRenombrar(false),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isDark
-                                ? Colors.orange.shade800
-                                : Colors.orange.shade200,
-                            foregroundColor: Colors.white,
-                          ),
-                          child: const Text('Renombrar (Conserva N°)'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () => _dialogoRenombrar(true),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isDark
-                                ? Colors.green.shade800
-                                : Colors.green.shade200,
-                            foregroundColor: Colors.white,
-                          ),
-                          child: const Text('Renombrar Secuencia'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            PanelAcciones(
+              seleccionados: archivosSeleccionados.length,
+              isDark: isDark,
+              onDesmarcarTodo: () => _marcarTodos(false),
+              onSeleccionarIntervalo: _seleccionarIntervalo,
+              onGestionarPistas: _gestionarPistas,
+              onLimpiarSubs: _limpiarSubs,
+              onBorrarTitulo: () => _modificarTitulo(true),
+              onIgualarTitulo: () => _modificarTitulo(false),
+              onQuitarSufijo: () =>
+                  _ejecutarRenombrado(RenombrarService.quitarSufijoCopia),
+              onDialogoRenombrar: () => _ejecutarRenombradoUI(false),
+              onDialogoSecuencia: () => _ejecutarRenombradoUI(true),
             ),
+
           const Divider(),
           Expanded(
             child: vistaActual == "archivos"
-                ? _construirListaArchivos()
-                : _construirListaCarpetas(),
+                ? _buildArchivos()
+                : _buildCarpetas(),
           ),
         ],
       ),
     );
   }
 
-  Widget _construirListaCarpetas() {
-    return ListView.builder(
-      itemCount: carpetasFiltradas.length,
-      itemBuilder: (context, index) {
-        final carpeta = carpetasFiltradas[index];
-        int profundidad = vistaActual == "agrupada"
-            ? _calcularProfundidad(carpeta.rutaCompleta)
-            : 0;
-        return Container(
-          margin: EdgeInsets.only(left: profundidad * 24.0),
-          decoration: profundidad > 0
-              ? BoxDecoration(
-                  border: Border(
-                    left: BorderSide(
-                      color: Colors.blueGrey.withOpacity(0.3),
-                      width: 2.0,
-                    ),
+  Widget _buildCarpetas() => ListView.builder(
+    itemCount: carpetasFiltradas.length,
+    itemBuilder: (context, index) {
+      final carpeta = carpetasFiltradas[index];
+      int prof = vistaActual == "agrupada" ? _prof(carpeta.rutaCompleta) : 0;
+      return Container(
+        margin: EdgeInsets.only(left: prof * 24.0),
+        decoration: prof > 0
+            ? BoxDecoration(
+                border: Border(
+                  left: BorderSide(
+                    color: Colors.blueGrey.withOpacity(0.3),
+                    width: 2.0,
                   ),
-                )
-              : null,
-          child: Theme(
-            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-            child: ExpansionTile(
-              key: Key('${carpeta.rutaCompleta}_$expandirTodo'),
-              initiallyExpanded: expandirTodo,
-              leading: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (profundidad > 0)
-                    const Icon(
-                      Icons.subdirectory_arrow_right,
-                      color: Colors.grey,
-                      size: 16,
-                    ),
-                  if (profundidad > 0) const SizedBox(width: 4),
-                  carpeta.iconoPath != null
-                      ? Image.file(
-                          File(carpeta.iconoPath!),
-                          width: 24,
-                          height: 24,
-                          fit: BoxFit.contain,
-                        )
-                      : const Icon(Icons.folder, color: Colors.amber),
-                ],
-              ),
-              title: Text(
-                carpeta.nombre,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: Text(_formatearTamano(carpeta.tamanoBytes)),
-              children: carpeta.archivos.map((archivo) {
-                return ListTile(
-                  contentPadding: const EdgeInsets.only(left: 40, right: 16),
-                  leading: modoSeleccion
-                      ? Checkbox(
-                          value: archivo.seleccionado,
-                          onChanged: (val) =>
-                              _manejarSeleccion(archivo, val ?? false),
-                        )
-                      : const Icon(
-                          Icons.insert_drive_file,
-                          color: Colors.blueGrey,
-                        ),
-                  title: Text(archivo.nombre),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        archivo.tipo.toUpperCase(),
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Text(_formatearTamano(archivo.tamanoBytes)),
-                    ],
+                ),
+              )
+            : null,
+        child: Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            key: Key('${carpeta.rutaCompleta}_$expandirTodo'),
+            initiallyExpanded: expandirTodo,
+            leading: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (prof > 0)
+                  const Icon(
+                    Icons.subdirectory_arrow_right,
+                    color: Colors.grey,
+                    size: 16,
                   ),
-                  onTap: modoSeleccion
-                      ? () => _manejarSeleccion(archivo, !archivo.seleccionado)
-                      : null,
-                );
-              }).toList(),
+                if (prof > 0) const SizedBox(width: 4),
+                carpeta.iconoPath != null
+                    ? Image.file(
+                        File(carpeta.iconoPath!),
+                        width: 24,
+                        height: 24,
+                      )
+                    : const Icon(Icons.folder, color: Colors.amber),
+              ],
             ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _construirListaArchivos() {
-    return ListView.builder(
-      itemCount: archivosFiltrados.length,
-      itemBuilder: (context, index) {
-        final archivo = archivosFiltrados[index];
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-          leading: modoSeleccion
-              ? Checkbox(
-                  value: archivo.seleccionado,
-                  onChanged: (val) => _manejarSeleccion(archivo, val ?? false),
+            title: Text(
+              carpeta.nombre,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            subtitle: Text(_formato(carpeta.tamanoBytes)),
+            children: carpeta.archivos
+                .map(
+                  (archivo) => ListTile(
+                    contentPadding: const EdgeInsets.only(left: 40, right: 16),
+                    leading: modoSeleccion
+                        ? Checkbox(
+                            value: archivo.seleccionado,
+                            onChanged: (v) =>
+                                _manejarSeleccion(archivo, v ?? false),
+                          )
+                        : const Icon(
+                            Icons.insert_drive_file,
+                            color: Colors.blueGrey,
+                          ),
+                    title: Text(archivo.nombre),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          archivo.tipo.toUpperCase(),
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Text(_formato(archivo.tamanoBytes)),
+                      ],
+                    ),
+                    onTap: modoSeleccion
+                        ? () =>
+                              _manejarSeleccion(archivo, !archivo.seleccionado)
+                        : null,
+                  ),
                 )
-              : const Icon(Icons.insert_drive_file, color: Colors.blueGrey),
-          title: Text(archivo.nombre),
-          subtitle: Text(
-            "${_formatearTamano(archivo.tamanoBytes)} - ${archivo.rutaCompleta}",
-            style: const TextStyle(fontSize: 11),
+                .toList(),
           ),
-          trailing: Text(
-            archivo.tipo.toUpperCase(),
-            style: const TextStyle(color: Colors.grey, fontSize: 12),
-          ),
-          onTap: modoSeleccion
-              ? () => _manejarSeleccion(archivo, !archivo.seleccionado)
-              : null,
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
+
+  Widget _buildArchivos() => ListView.builder(
+    itemCount: archivosFiltrados.length,
+    itemBuilder: (context, index) {
+      final a = archivosFiltrados[index];
+      return ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        leading: modoSeleccion
+            ? Checkbox(
+                value: a.seleccionado,
+                onChanged: (v) => _manejarSeleccion(a, v ?? false),
+              )
+            : const Icon(Icons.insert_drive_file, color: Colors.blueGrey),
+        title: Text(a.nombre),
+        subtitle: Text(
+          "${_formato(a.tamanoBytes)} - ${a.rutaCompleta}",
+          style: const TextStyle(fontSize: 11),
+        ),
+        trailing: Text(
+          a.tipo.toUpperCase(),
+          style: const TextStyle(color: Colors.grey, fontSize: 12),
+        ),
+        onTap: modoSeleccion
+            ? () => _manejarSeleccion(a, !a.seleccionado)
+            : null,
+      );
+    },
+  );
 }
