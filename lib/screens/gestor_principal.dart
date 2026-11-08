@@ -76,7 +76,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     );
   }
 
-  // --- CONTROL DE UI ---
   void _manejarSeleccion(ArchivoModelo archivo, bool valor) {
     if (valor &&
         vistaActual != "archivos" &&
@@ -95,11 +94,14 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     setState(() => archivo.seleccionado = valor);
   }
 
-  void _marcarTodos(bool val) => setState(() {
-    for (var a in archivosFiltrados) {
-      a.seleccionado = val;
-    }
-  });
+  // FIX: Se cambió iteración a todosLosArchivos para que desmarque siempre.
+  void _marcarTodos(bool val) {
+    setState(() {
+      for (var a in todosLosArchivos) {
+        a.seleccionado = val;
+      }
+    });
+  }
 
   void _seleccionarIntervalo() {
     if (archivosSeleccionados.length < 2) return;
@@ -171,7 +173,6 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
     });
   }
 
-  // --- LLAMADAS A SERVICIOS ---
   void _ejecutarRenombrado(int Function(List<ArchivoModelo>) accion) {
     try {
       int procesados = accion(archivosSeleccionados);
@@ -211,11 +212,12 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
 
   void _limpiarSubs() {
     DialogosHelper.mostrarDialogoLimpiarSubtitulos(context, (texto) async {
-      if (!MkvService.verificarHerramientas())
+      if (!MkvService.verificarHerramientas()) {
         return _mostrarNotificacion(
           'Error en herramientas MKV.',
           esError: true,
         );
+      }
       _mostrarNotificacion('Procesando limpieza, espera...');
       var res = await MkvService.procesarLimpiezaSubtitulos(
         archivos: archivosSeleccionados,
@@ -232,12 +234,14 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
   }
 
   void _gestionarPistas() async {
-    if (!MkvService.verificarHerramientas())
+    if (!MkvService.verificarHerramientas()) {
       return _mostrarNotificacion('Error en herramientas MKV.', esError: true);
+    }
     var base = archivosSeleccionados.firstWhere((a) => a.tipo == 'mkv');
     var info = await MkvService.obtenerPistas(base.rutaCompleta);
-    if (info == null)
+    if (info == null) {
       return _mostrarNotificacion('Error analizando MKV.', esError: true);
+    }
 
     List<dynamic> audios = [], subs = [];
     for (var track in info['tracks']) {
@@ -321,67 +325,55 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
+      // NUEVO LAYOUT: Fila con Panel Lateral y Contenido Principal
+      body: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 12.0, top: 12.0, right: 12.0),
-            child: Text(
-              "Directorio Actual: $directorioBase",
-              style: const TextStyle(
-                color: Colors.grey,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // PANEL LATERAL IZQUIERDO (SIDEBAR)
+          Container(
+            width: 260,
+            padding: const EdgeInsets.all(16.0),
+            color: isDark
+                ? Colors.blueGrey.shade900.withOpacity(0.3)
+                : Colors.blueGrey.shade50,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ElevatedButton.icon(
-                  onPressed: vistaActual == "archivos"
-                      ? null
-                      : () => setState(() => expandirTodo = !expandirTodo),
-                  icon: Icon(
-                    expandirTodo ? Icons.unfold_less : Icons.unfold_more,
-                  ),
-                  label: Text(expandirTodo ? 'Contraer Todo' : 'Expandir Todo'),
+                const Text(
+                  'Buscador',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 ),
-                SizedBox(
-                  width: 350,
-                  child: TextField(
-                    controller: searchController,
-                    decoration: InputDecoration(
-                      labelText: '🔍 Buscar archivos o carpetas',
-                      border: const OutlineInputBorder(),
-                      isDense: true,
-                      suffixIcon: searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                searchController.clear();
-                                FocusScope.of(context).unfocus();
-                              },
-                            )
-                          : null,
-                    ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Archivos o carpetas...',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                    filled: true,
+                    fillColor: isDark ? Colors.black26 : Colors.white,
+                    suffixIcon: searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () {
+                              searchController.clear();
+                              FocusScope.of(context).unfocus();
+                            },
+                          )
+                        : null,
                   ),
                 ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12.0,
-              vertical: 4.0,
-            ),
-            child: Wrap(
-              spacing: 8.0,
-              children: [
+
+                const SizedBox(height: 32),
+                const Text(
+                  'Vistas',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
+                    alignment: Alignment.centerLeft,
                     backgroundColor: vistaActual == "agrupada"
                         ? (isDark ? Colors.blue.shade900 : Colors.blue.shade100)
                         : null,
@@ -390,11 +382,13 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                     vistaActual = "agrupada";
                     _actualizarVista();
                   }),
-                  icon: const Icon(Icons.folder_copy),
+                  icon: const Icon(Icons.folder_copy, size: 20),
                   label: const Text('Jerarquía'),
                 ),
+                const SizedBox(height: 8),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
+                    alignment: Alignment.centerLeft,
                     backgroundColor: vistaActual == "ordenada"
                         ? (isDark
                               ? Colors.amber.shade900
@@ -405,11 +399,13 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                     vistaActual = "ordenada";
                     _actualizarVista();
                   }),
-                  icon: const Icon(Icons.sort_by_alpha),
+                  icon: const Icon(Icons.sort_by_alpha, size: 20),
                   label: const Text('Nombres'),
                 ),
+                const SizedBox(height: 8),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
+                    alignment: Alignment.centerLeft,
                     backgroundColor: vistaActual == "archivos"
                         ? (isDark
                               ? Colors.deepOrange.shade900
@@ -420,49 +416,101 @@ class _GestorPrincipalState extends State<GestorPrincipal> {
                     vistaActual = "archivos";
                     _actualizarVista();
                   }),
-                  icon: const Icon(Icons.balance),
+                  icon: const Icon(Icons.balance, size: 20),
                   label: const Text('Lista Plana'),
                 ),
-                if (modoSeleccion && vistaActual == "archivos")
+
+                const SizedBox(height: 32),
+                const Text(
+                  'Acciones',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    alignment: Alignment.centerLeft,
+                  ),
+                  onPressed: vistaActual == "archivos"
+                      ? null
+                      : () => setState(() => expandirTodo = !expandirTodo),
+                  icon: Icon(
+                    expandirTodo ? Icons.unfold_less : Icons.unfold_more,
+                    size: 20,
+                  ),
+                  label: Text(expandirTodo ? 'Contraer Todo' : 'Expandir Todo'),
+                ),
+
+                if (modoSeleccion && vistaActual == "archivos") ...[
+                  const SizedBox(height: 8),
                   ElevatedButton.icon(
                     onPressed: () => _marcarTodos(!haySeleccion),
                     style: ElevatedButton.styleFrom(
+                      alignment: Alignment.centerLeft,
                       backgroundColor: isDark
                           ? Colors.grey.shade800
                           : Colors.grey.shade300,
                     ),
                     icon: Icon(
                       haySeleccion ? Icons.deselect : Icons.select_all,
+                      size: 20,
                     ),
                     label: Text(
                       haySeleccion ? "Desmarcar Todos" : "Marcar Todos",
                     ),
                   ),
+                ],
               ],
             ),
           ),
 
-          if (modoSeleccion && haySeleccion)
-            PanelAcciones(
-              seleccionados: archivosSeleccionados.length,
-              isDark: isDark,
-              onDesmarcarTodo: () => _marcarTodos(false),
-              onSeleccionarIntervalo: _seleccionarIntervalo,
-              onGestionarPistas: _gestionarPistas,
-              onLimpiarSubs: _limpiarSubs,
-              onBorrarTitulo: () => _modificarTitulo(true),
-              onIgualarTitulo: () => _modificarTitulo(false),
-              onQuitarSufijo: () =>
-                  _ejecutarRenombrado(RenombrarService.quitarSufijoCopia),
-              onDialogoRenombrar: () => _ejecutarRenombradoUI(false),
-              onDialogoSecuencia: () => _ejecutarRenombradoUI(true),
-            ),
+          const VerticalDivider(width: 1, thickness: 1),
 
-          const Divider(),
+          // CONTENIDO PRINCIPAL DERECHO
           Expanded(
-            child: vistaActual == "archivos"
-                ? _buildArchivos()
-                : _buildCarpetas(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(
+                    left: 16.0,
+                    top: 16.0,
+                    right: 16.0,
+                    bottom: 8.0,
+                  ),
+                  child: Text(
+                    "Directorio Actual: $directorioBase",
+                    style: const TextStyle(
+                      color: Colors.grey,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+
+                if (modoSeleccion && haySeleccion)
+                  PanelAcciones(
+                    seleccionados: archivosSeleccionados.length,
+                    isDark: isDark,
+                    onDesmarcarTodo: () => _marcarTodos(false),
+                    onSeleccionarIntervalo: _seleccionarIntervalo,
+                    onGestionarPistas: _gestionarPistas,
+                    onLimpiarSubs: _limpiarSubs,
+                    onBorrarTitulo: () => _modificarTitulo(true),
+                    onIgualarTitulo: () => _modificarTitulo(false),
+                    onQuitarSufijo: () =>
+                        _ejecutarRenombrado(RenombrarService.quitarSufijoCopia),
+                    onDialogoRenombrar: () => _ejecutarRenombradoUI(false),
+                    onDialogoSecuencia: () => _ejecutarRenombradoUI(true),
+                  ),
+
+                const Divider(),
+                Expanded(
+                  child: vistaActual == "archivos"
+                      ? _buildArchivos()
+                      : _buildCarpetas(),
+                ),
+              ],
+            ),
           ),
         ],
       ),
